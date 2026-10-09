@@ -1,8 +1,8 @@
 // KIT TEST — not on the timeline: open with ?scene=kit (stills: bun scripts/render.ts stills --scene kit --t 4,12,20,...).
 // Everything of the shared kit (_love.ts), one sheet per page, PAGE seconds each, so the look of the two
 // characters, the particles, the lyric styles and the transitions can be checked and locked before the
-// scenes are built. Pages: her poses, his poses, the design sheet, the two together, particles, lyric
-// styles, light and depth, transitions.
+// scenes are built. Pages: her poses, his poses (each in summer, autumn, then winter clothes), the design
+// sheet, the two together, particles, lyric styles, light and depth, transitions.
 import * as THREE from 'three';
 import { Scene, type Frame } from '../engine/scene';
 import { W, H, makeRT } from '../engine/gl';
@@ -98,12 +98,13 @@ export default class KitTest extends Scene {
     }
   }
 
-  /** Every pose, her or him. */
+  /** Every pose, her or him: in summer clothes for the first third of the page, then autumn, then winter. */
   private poses(c: Ctx, f: Frame, boy: boolean) {
-    this.label(c, boy ? 'HIM: every pose' : 'HER: every pose', W / 2, 52, 26);
+    const outfit = (['summer', 'autumn', 'winter'] as const)[Math.min(2, Math.floor(((f.t % PAGE) / PAGE) * 3))]!;
+    this.label(c, `${boy ? 'HIM' : 'HER'}: every pose (${outfit})`, W / 2, 52, 26);
     POSES.forEach((pose, i) => {
       const col = i % 6, row = Math.floor(i / 6), x = 160 + col * 320, y = 500 + row * 500;
-      this.posed(c, f, boy, pose, pose === 'hold-phone' ? x - 80 : pose === 'sit-write' || pose === 'chin-on-hand' || pose === 'pack-bag' ? x - 50 : x, y, 0.56, { outfit: 'autumn' });
+      this.posed(c, f, boy, pose, pose === 'hold-phone' ? x - 80 : pose === 'sit-write' || pose === 'chin-on-hand' || pose === 'pack-bag' ? x - 50 : x, y, 0.56, { outfit });
       this.label(c, pose, x, y + 44);
     });
   }

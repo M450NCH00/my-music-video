@@ -407,10 +407,17 @@ function figure(c: Ctx, who: 'girl' | 'boy', poseArg: PoseArg, p: CharParams): A
     return ring(spine(h), A, F, w * k, d * k);
   };
   const shoulders = (grow = 0) => [...section(170, grow), ...section(184, grow, 0.84)];
+  /**
+   * A ring of her skirt (or coat) round a thigh, `at` along it from the hip. Where the thigh is level
+   * (sitting, lying) the cloth rests on top of it and hangs below; it never goes through what she is on.
+   */
   const hem = (hj: V3, kn: V3, at: number, w: number, d: number): V2[] => {
     const dir = norm(sub(kn, hj)), c0 = add(hj, mul(dir, at));
-    return ring(c0, [1, 0, 0], cross(dir, [1, 0, 0]), w, d).map(([x, y]) => [x + gust * 8 * s, y] as V2);
+    const drop = Math.max(0, d - lerp(b.leg[0], b.leg[1], clamp(at / THIGH)) - 3) * clamp(1 + dir[1]);
+    return ring(add(c0, [0, -drop, 0]), [1, 0, 0], cross(dir, [1, 0, 0]), w, d).map(([x, y]) => [x + gust * 8 * s, Math.min(y, p.y)] as V2);
   };
+  /** The round of each hip, a little larger than the thigh that starts there: what a skirt or a coat must cover when she sits. */
+  const hips = (grow: number): V2[] => [hjL, hjR].flatMap((hj) => { const q = PS(hj); return circle(q[0], q[1], (b.leg[0] + grow) * s, 16).map(([x, y]) => [x, Math.min(y, p.y)] as V2); });
   const torsoZ = P(spine(120))[2];
   const surf = (h: number, x: number, out = 0): V2 => { const [A, F] = axes(h), st = b.st, d = (h > 150 ? st[3]![2] + 1 : st[2]![2] + 2) + out; return PS(add(spine(h), add(mul(A, x), mul(F, d)))); };
   /** A strip down the front of the chest (the shirt between the edges of a cardigan or jacket), if the chest faces us. */
@@ -429,17 +436,26 @@ function figure(c: Ctx, who: 'girl' | 'boy', poseArg: PoseArg, p: CharParams): A
     part(tube(spine(NECK - 8), b.neck, add(headC, [0, -b.R * 0.5, 0]), b.neck * 0.94), SKIN_LOW, SKIN_LOW);
     if (girl) {
       if (winter) {
-        // the long coat, over everything down to the knees
-        part(hull([...shoulders(4), ...section(130, 4), ...section(0, 6), ...hem(hjL, knL, 146, 26, 28), ...hem(hjR, knR, 146, 26, 28)]), BEIGE, BEIGE_LOW, { rim: true });
+        // the long coat, over everything down to the knees: its body, and its skirts round the thighs (in two
+        // parts that meet at the hips, like the skirt below)
+        const round = hips(5), body = hull([...shoulders(4), ...section(130, 4), ...section(0, 6), ...round]);
+        const skirts = hull([...round, ...hem(hjL, knL, 146, 26, 28), ...hem(hjR, knR, 146, 26, 28)]), yr = bounds([...body, ...skirts]);
+        part(skirts, BEIGE, BEIGE_LOW, { yr }); part(body, BEIGE, BEIGE_LOW, { rim: true, yr });
         if (front(1.1, 16, 166, rgba('ink', 0.2), rgba('ink', 0.2), 5)) buttons([58, 98, 138], 7, 5);
         return;
       }
       if (!autumn) part(hull([...shoulders(0), ...section(130), ...section(40)]), SHIRT, SHIRT_LOW, { rim: true });
-      const sk = hull([...section(50, 1.5), ...section(0, 3), ...hem(hjL, knL, 108, 25, 27), ...hem(hjR, knR, 108, 25, 27)]);
-      const skPath = part(sk, NAVY, NAVY_LOW);
+      // the skirt in two parts that meet at the hips: round the waist and the seat, and round the thighs down to
+      // the hem. (As one shape from waist to hem it bridged over a raised thigh: sitting, it lay on her lap
+      // with the hip and the underside of the thigh bare.)
+      const round = hips(1), waist = hull([...section(50, 1.5), ...section(0, 3), ...round]);
+      const lap = hull([...round, ...hem(hjL, knL, 108, 25, 27), ...hem(hjR, knR, 108, 25, 27)]), sk = [...waist, ...lap], yr = bounds(sk);
+      part(waist, NAVY, NAVY_LOW, { yr }); part(lap, NAVY, NAVY_LOW, { yr });
       if (!br.plain) {
         // pleats: from the waist down to the hem
-        const [ty, by] = bounds(sk), top = sk.filter((q) => q[1] < ty + 14 * s), bot = sk.filter((q) => q[1] > by - 24 * s);
+        const skPath = new Path2D();
+        skPath.addPath(shape(waist)); skPath.addPath(shape(lap));
+        const [ty, by] = yr, top = sk.filter((q) => q[1] < ty + 14 * s), bot = sk.filter((q) => q[1] > by - 24 * s);
         const tx0 = Math.min(...top.map((q) => q[0])), tx1 = Math.max(...top.map((q) => q[0])), bx0 = Math.min(...bot.map((q) => q[0])), bx1 = Math.max(...bot.map((q) => q[0]));
         c.save(); c.clip(skPath);
         const pl = new Path2D();
