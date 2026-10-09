@@ -16,7 +16,7 @@ Until the parts have scenes, one scene (`karaoke`) shows the lyrics as plain typ
 - `lyrics/lyrics.src.js` — the lyrics, one entry per sung line. The aligner reads only the text; the times are filled in from the alignment, for reference.
 - `analysis/` — Python (uv) tools that produce the timing data: Demucs stem separation, CTC forced alignment of the lyrics as pinyin, beat/downbeat/onset analysis. See `analysis/align.py` and `analysis/analyze.py`.
 - `data/lyrics.json` — the start and end of every sung character.
-- `data/audio.json` — tempo (140 BPM), beats, downbeats, sections, drum/vocal onsets and loudness envelopes.
+- `data/audio.json` — tempo (70 BPM: the song is in half time, the drums' own pulse is twice that), beats, downbeats, sections, drum/vocal onsets and loudness envelopes.
 - `app/` — the renderer: TypeScript + three.js, bun + Vite.
   - `src/engine/` — renderer core: timeline playback, post-processing (bloom, halation, grain), typography, GPU line batches, the HUD (hidden by default).
   - `src/scenes/` — one module per scene.
@@ -92,7 +92,7 @@ uv run python check.py           # report: line windows, confidence, repeated li
 
 - **Lyrics:** every Chinese character is aligned as its toneless pinyin (`pron.py`; add a reading to `PRON` there where the dictionary one is not the sung one).
 - **Checking:** `check.py` flags lines with low confidence and repeated lines whose rhythm differs between repeats; the plots in `analysis/qa/` show every line over the vocal's spectrogram. Corrections go in `FIX` in `align.py`.
-- **Sections:** `SECTION_LINES` in `analyze.py` names the lyric line each section starts with.
+- **Sections:** `SECTIONS` in `analyze.py` names the lyric line each section starts with, or follows for the instrumental ones (interlude, outro).
 
 The models download about 1.5 GB of weights into `analysis/.cache/`; delete that folder afterwards.
 

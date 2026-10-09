@@ -19,7 +19,7 @@ This file is about the engine. What the video looks like, and which part of the 
 ## Data
 
 - `lyrics` (`src/engine/lyrics.ts`): `lines[]` with `text,start,end,words[]`. A "word" is one sung Chinese character, `{w,start,end,at}` (`at` = its offset in the line's text), aligned to the vocal. Find lines by content, never hard-code times: `const l = this.ctx.lyrics.get('教室钟慢半拍')` → `l.words[2].start`; a line that is sung more than once takes an index, `lyrics.get('等你下课一起走好不好', 1)` for the second chorus. Helpers: `Lyrics.wordProgress(word, t)` (0..1 sung progress), `Lyrics.lineCharProgress(line, t)` (chars sung so far — for per-glyph wipes), `lyrics.findWords('见')`, `lyrics.lineAt(t)`, `lyrics.linesIn(t0, t1)`.
-- `audio` (`src/engine/audio.ts`): `beats[]`, `downbeats[]`, `sections[]`, `beatAt(t)` (continuous beat index), `barAt(t)`, `timeOfBeat(i)`, `nearestBeat(t)`, `events('kick'|'snare'|'hat'|'vocal', t0, t1)`, `env(name, t)` for `rms|low|mid|high|vocal|drums|bass|other` (0..1), `hit(kind, t, halfLife)` decaying pulses.
+- `audio` (`src/engine/audio.ts`): `beats[]`, `downbeats[]`, `sections[]` (`{name,start,end}`: intro, verse1, chorus1, interlude, verse2, chorus2, bridge, final, outro), `beatAt(t)` (continuous beat index), `barAt(t)`, `timeOfBeat(i)`, `nearestBeat(t)`, `events('kick'|'snare'|'hat'|'vocal', t0, t1)`, `env(name, t)` for `rms|low|mid|high|vocal|drums|bass|other` (0..1), `hit(kind, t, halfLife)` decaying pulses.
 - Every `Frame` already carries `f.a` = `{rms,low,mid,high,vocal,drums,bass,other,kick,snare,hat,vonset}` and `f.beat,f.bar,f.beatPhase,f.barPhase`.
 
 ## Writing a scene

@@ -1,8 +1,9 @@
 """Music analysis -> data/audio.json
 
-  * constant-tempo beat grid (tempo + phase fitted to drum / mix onsets, phase
-    refined on kick attacks), downbeats (bar phase from the kick pattern and the
-    bass / chord changes), sections on downbeats, from the aligned lyrics,
+  * constant-tempo beat grid (the drums' pulse fitted to drum / mix onsets, tempo
+    and phase refined on kick attacks, every second beat kept for a song in half
+    time), downbeats (bar phase from the kick pattern and the bass / chord
+    changes), sections from the aligned lyrics,
   * 100 fps normalized envelopes (mix rms / low / mid / high, stem rms),
   * kick / snare / hat onsets from the drums stem, vocal note onsets.
 
@@ -26,20 +27,31 @@ FPS = 100
 
 # Tempo search range (BPM); None = +-8 % around librosa's estimate.
 BPM_RANGE = None
+# The fit locks onto the fastest steady pulse of the drums.  This song is in half time: the kick
+# and the snare alternate on every second beat of that pulse (one snare per four of its beats), so
+# the beat one taps along to, and the one docs/TREATMENT.md counts in ("two steps per beat"), is
+# half as fast.  True = the grid keeps every second beat of the fit, the ones the kick and the
+# snare fall on.
+HALF_TIME = True
 # Which beat of the grid (0..3) is a downbeat; None = pick it from the kick and bass.
 BAR_PHASE = None
 
-# Sections: (name, index of the first lyric line).  A section starts on the
-# downbeat of the bar in which its first line starts, or on the next downbeat
-# when the line starts with a pickup (less than 1.5 beats before it).  "outro"
-# starts on the first downbeat after the last line.
-SECTION_LINES = [
-    ("verse1", 0),
-    ("chorus1", 8),
-    ("verse2", 16),
-    ("chorus2", 24),
-    ("bridge", 32),
-    ("chorus3", 36),
+# Sections of the song, in order: (name, rule, lyric line, which occurrence of it).
+#   "line":  the section starts with that line: on the downbeat of the bar in
+#            which the line starts, or on the next downbeat when the line starts
+#            with a pickup (less than 1.5 beats before it);
+#   "after": the section is instrumental and follows that line: it starts on
+#            the first beat at or after the line's end.
+# "intro" (0 -> the first section) is added in front.
+SECTIONS = [
+    ("verse1", "line", "教室钟慢半拍", 0),
+    ("chorus1", "line", "等你下课一起走好不好", 0),
+    ("interlude", "after", "把喜欢藏在书包拉链口", 0),
+    ("verse2", "line", "走廊风吹得好吵", 0),
+    ("chorus2", "line", "等你下课一起走好不好", 1),
+    ("bridge", "line", "哪天如果我们", 0),
+    ("final", "line", "等你下课一起走好不好", 2),
+    ("outro", "after", "把喜欢一点一点说出口", 0),
 ]
 
 
@@ -101,7 +113,11 @@ def fit_grid(drums, mix, sr, duration):
 
     lo_hi = BPM_RANGE
     if lo_hi is None:
-        est = float(np.atleast_1d(librosa.feature.tempo(onset_envelope=o, sr=22050, hop_length=hop // 2))[0])
+        # (a coarse estimate is enough to place the search: it is taken from the envelope pooled to
+        # 43 frames/s; at the envelope's own 689 frames/s librosa's tempogram takes several GB)
+        k = 16
+        pooled = o[: len(o) // k * k].reshape(-1, k).max(axis=1)
+        est = float(np.atleast_1d(librosa.feature.tempo(onset_envelope=pooled, sr=22050, hop_length=(hop // 2) * k))[0])
         lo_hi = (est * 0.92, est * 1.08)
         print(f"librosa tempo estimate {est:.2f} BPM -> search {lo_hi[0]:.1f}..{lo_hi[1]:.1f}")
     best = (0, None, None)
@@ -120,13 +136,25 @@ def fit_grid(drums, mix, sr, duration):
                 best = (s, b2, o2)
     _, bpm, off = best
     P = 60 / bpm
-    # refine phase on kick attacks (steepest rise of low-band log energy)
+    # refine tempo and phase on kick attacks (steepest rise of low-band log energy): the line through
+    # the attack times of the kicks that fall on a beat, against their beat index. (The search above
+    # is only as fine as its steps and the envelope's frames; over a whole song the kicks pin the
+    # period down to a few microseconds, whatever range the search started from.)
     kick_t, _ = band_onsets(drums, sr, None, 120, win=0.012, min_gap=0.2, rel_db=12)
-    n = np.round((kick_t - off) / P)
-    res = kick_t - (off + n * P)
-    res = res[np.abs(res) < 0.06]
-    if len(res) >= 8:
-        off = off + float(np.median(res))
+
+    def on_beat(tol):
+        n = np.round((kick_t - off) / P)
+        r = kick_t - (off + n * P)
+        ok = np.abs(r) < tol
+        return n[ok], kick_t[ok], r[ok]
+
+    for tol in (0.06, 0.03):
+        n, kt, _ = on_beat(tol)
+        if len(n) < 8:
+            break
+        P, off = (float(x) for x in np.polyfit(n, kt, 1))
+    bpm = 60 / P
+    res = on_beat(0.06)[2]
     # first beat >= 0
     off = off - P * math.floor(off / P)
     return bpm, P, off, res
@@ -271,6 +299,16 @@ def main(plots=False):
     bpm, P, off, kick_res = fit_grid(stems["drums"], mix, SR, duration)
     print(f"tempo {bpm:.3f} BPM  period {P:.5f}s  first beat {off:.4f}s  kick residual sd {kick_res.std()*1000:.1f} ms")
     beats = off + P * np.arange(int((duration - off) / P) + 1)
+    (kt, kdb), (st, sdb), (ht, hdb), sn_thr = drum_onsets(stems["drums"], SR, P, off)
+    if HALF_TIME:
+        # of the two interleaved halves of the fitted pulse, the one the kick and the snare fall on
+        hits = np.concatenate([kt, st])
+        on = [int((np.abs(hits[:, None] - beats[None, p::2]).min(axis=1) < 0.05).sum()) for p in (0, 1)]
+        p = int(np.argmax(on))
+        print(f"half time: kick and snare hits on the even / odd beats of the fit: {on[0]} / {on[1]} -> the grid keeps the {('even', 'odd')[p]} ones")
+        beats = beats[p::2]
+        bpm, P, off = bpm / 2, P * 2, float(beats[0])
+        print(f"grid  {bpm:.3f} BPM  period {P:.5f}s  first beat {off:.4f}s")
     phase = BAR_PHASE
     if phase is None:
         phase, _, _ = bar_phase(beats, stems["drums"], stems["bass"], SR)
@@ -291,7 +329,6 @@ def main(plots=False):
         assert len(env[k]) == n
 
     # onsets -------------------------------------------------------------------
-    (kt, kdb), (st, sdb), (ht, hdb), sn_thr = drum_onsets(stems["drums"], SR, P, off)
     onsets = {
         "kick": [[round(float(t), 3), round(float(s), 3)] for t, s in zip(kt, strength01(kdb))],
         "snare": [[round(float(t), 3), round(float(s), 3)] for t, s in zip(st, strength01(sdb))],
@@ -309,22 +346,32 @@ def main(plots=False):
     # sections -------------------------------------------------------------------
     ly = json.loads((common.DATA / "lyrics.json").read_text(encoding="utf-8"))["lines"]
 
-    def section_start(t):
+    def line(text, nth):
+        hits = [l for l in ly if l["text"] == text]
+        if nth >= len(hits):
+            raise SystemExit(f"SECTIONS: line {text!r} (occurrence {nth}) is not in data/lyrics.json")
+        return hits[nth]
+
+    def bar_of(t):
         k = int(np.searchsorted(downbeats, t, side="right")) - 1
         if k + 1 < len(downbeats) and downbeats[k + 1] - t < 1.5 * P:
             k += 1
         return float(downbeats[max(k, 0)])
 
-    marks = [(name, section_start(ly[i]["start"])) for name, i in SECTION_LINES]
-    after = downbeats[downbeats >= ly[-1]["end"]]
-    if len(after) and after[0] < duration - 2 * P:
-        marks.append(("outro", float(after[0])))
+    def beat_after(t):
+        # (a held last note may end a little past the beat: a quarter of a beat is allowed)
+        k = int(np.searchsorted(beats, t - 0.25 * P, side="left"))
+        return float(beats[min(k, len(beats) - 1)])
+
+    marks = [(name, bar_of(line(text, nth)["start"]) if rule == "line" else beat_after(line(text, nth)["end"]))
+             for name, rule, text, nth in SECTIONS]
+    assert all(a[1] < b[1] for a, b in zip(marks, marks[1:])), marks
     if marks[0][1] > 0:
         marks.insert(0, ("intro", 0.0))
     sections = [dict(name=n, start=round(a, 3), end=round(marks[i + 1][1] if i + 1 < len(marks) else duration, 3))
                 for i, (n, a) in enumerate(marks)]
     for x in sections:
-        print(f"  {x['name']:8s} {x['start']:7.2f} - {x['end']:7.2f}")
+        print(f"  {x['name']:9s} {x['start']:7.2f} - {x['end']:7.2f}")
 
     doc = dict(
         duration=round(duration, 3),
@@ -351,13 +398,18 @@ def main(plots=False):
 
 NOTES = (
     "Timeline = gapless mp3 decode (ffmpeg/libsndfile/browsers); the Demucs stems are separated "
-    "from that decode. Tempo is taken as constant: {bpm:.3f} BPM (period {P:.5f} s), fitted over "
-    "the whole song on drum+mix onset envelopes, phase refined on kick attack times (residual sd "
-    "{sd:.1f} ms); first beat {off:.3f} s. The grid is extrapolated through passages without drums. "
+    "from that decode. Tempo is taken as constant: {bpm:.3f} BPM (period {P:.5f} s). The pulse of the "
+    "drums is fitted over the whole song on drum+mix onset envelopes, then tempo and phase are "
+    "refined by a line through the kick attack times (residual sd {sd:.1f} ms). The song is in half "
+    "time (kick on beats 1 and 3, snare on 2 and 4 of a slow bar), so the grid keeps every second "
+    "beat of that pulse: `beats` are the beats one taps along to, and the faster pulse is their "
+    "halves. First beat {off:.3f} s. The grid is extrapolated through passages without drums. "
     "Bar phase (4/4): the beat position where the kick is loudest and the bass note / chord changes "
     "most often; first downbeat {first_db:.3f} s. Sections start on downbeats and follow the lyrics "
-    "(analyze.py SECTION_LINES): the downbeat of the bar in which the section's first line starts, "
-    "or the next one when the line starts with a pickup shorter than 1.5 beats. "
+    "(analyze.py SECTIONS): a section that starts with a line starts on the downbeat of the bar in "
+    "which that line starts, or on the next one when the line starts with a pickup shorter than "
+    "1.5 beats; an instrumental section (interlude, outro) starts on the first beat after the "
+    "line before it. "
     "Envelopes: 100 fps, frame i centred at i/100 s, 46 ms RMS window, one-pole smoothing "
     "(10 ms attack / 90 ms release), each divided by its own 99th percentile and clipped "
     "to 0..1 (linear amplitude). low <150 Hz, mid 150-2000 Hz, high >4 kHz of the full mix; "
