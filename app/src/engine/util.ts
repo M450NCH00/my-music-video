@@ -27,6 +27,9 @@ export const window01 = (x: number, a: number, b: number, fadeIn = 0.2, fadeOut 
 // ---- easing (t in 0..1) ----
 export const ease = {
   linear: (t: number) => t,
+  inSine: (t: number) => 1 - Math.cos((t * Math.PI) / 2),
+  outSine: (t: number) => Math.sin((t * Math.PI) / 2),
+  inOutSine: (t: number) => 0.5 - 0.5 * Math.cos(Math.PI * t),
   inQuad: (t: number) => t * t,
   outQuad: (t: number) => 1 - (1 - t) * (1 - t),
   inOutQuad: (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),

@@ -22,14 +22,18 @@ export const LIN: Record<PaletteKey, [number, number, number]> = Object.fromEntr
   Object.entries(HEX).map(([k, v]) => [k, hexToLinear(v)]),
 ) as Record<PaletteKey, [number, number, number]>;
 
-/** A token or a '#RRGGBB' colour as its three 0..255 channels. */
+/** A token, a '#RRGGBB' colour or a CSS rgb()/rgba() string (what rgba() and mix() return) as its three 0..255 channels. */
 function channels(key: PaletteKey | string): [number, number, number] {
-  const hex = (HEX as Record<string, string>)[key] ?? key;
-  const n = parseInt(hex.replace('#', ''), 16);
+  const col = (HEX as Record<string, string>)[key] ?? key;
+  if (col.startsWith('rgb')) {
+    const m = col.match(/[\d.]+/g)!;
+    return [+m[0]!, +m[1]!, +m[2]!];
+  }
+  const n = parseInt(col.replace('#', ''), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-/** CSS rgba() for Canvas2D: a token ('rose') or a hex colour, with an opacity. */
+/** CSS rgba() for Canvas2D: a token ('rose'), a hex colour or the result of mix(), with an opacity. */
 export function rgba(key: PaletteKey | string, a = 1): string {
   const [r, g, b] = channels(key);
   return `rgba(${r},${g},${b},${a})`;
