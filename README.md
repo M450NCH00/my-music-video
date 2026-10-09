@@ -8,7 +8,7 @@ The renderer started as a fork of the code-rendered video for "I'm Upping My P(d
 - [`docs/PROMPTS.md`](docs/PROMPTS.md) — the prompts that build it: a foundation, then one part of the song per session.
 - [`docs/ENGINE.md`](docs/ENGINE.md) — the engine and the scene API.
 
-Until the parts have scenes, one scene (`karaoke`) shows the lyrics as plain type, lit character by character with the voice.
+The foundation is done: the song's eight parts are on the timeline, and the shared kit (the two characters, particles, the lyric renderer, transitions) is in place. A part that is not built yet shows a placeholder: paper, the part's name, and the lyrics lit character by character with the voice. So the whole song already plays end to end.
 
 ## Layout
 
@@ -21,7 +21,7 @@ Until the parts have scenes, one scene (`karaoke`) shows the lyrics as plain typ
   - `src/engine/` — renderer core: timeline playback, the palette, post-processing (bloom on light sources, lifted blacks, fine grain, a gentle vignette), typography, GPU line batches, the HUD (hidden by default).
   - `public/fonts/` — the fonts: LXGW WenKai (霞鹜文楷) for the lyrics and Noto Sans SC for small text, both cut down to the characters the video shows, and the Latin fonts the engine came with.
   - `src/scenes/` — one module per scene. `_love.ts` is the kit they share (the two characters, props, particles, light, the lyric renderer, transitions); `_kit-test.ts` shows all of it at http://localhost:5173/?scene=kit.
-  - `src/timeline.ts` — the edit: which scene plays when.
+  - `src/timeline.ts` — the edit: which scene plays when. Eight parts (intro, verse 1, chorus 1 with the interlude, verse 2, chorus 2, bridge, final chorus, outro), each starting on the beat nearest to its first lyric line.
   - `scripts/render.ts` — offline renderer (headless Chrome → raw frames over WebSocket → ffmpeg).
 - `out/` — renders (not in the repo).
 
@@ -60,7 +60,7 @@ bun scripts/render.ts video --samples auto --shutter 0.2
 ```
 
 - **Output:** `out/mv.mp4` (or `--out <file>`), 1920×1080 at 60 fps, x264 CRF 16, AAC audio.
-- **Motion blur:** every frame is the average of many sub-frames spread over a short shutter (`--shutter 0.2`, a fifth of the frame time), so fast motion leaves a continuous streak instead of a few stepped copies. `--samples auto` picks the count for each 32×32 tile of the frame: 12 where the image is still, 36 for ordinary camera motion, 108 or 324 for whips, slams and fast zooms. A tile stops once more sub-frames would no longer change it by more than `--tol` levels of 255 (default 3), and later sub-frames skip it, so a fast object over a still background costs little more than the object. `--refine frame` picks one count for the whole frame instead (slower, the sampler before tiles). `--samples N` takes a fixed N (`--samples 4` makes a quick draft; `--samples 1` is enough for the `karaoke` scene, where nothing moves fast). How it works: "Motion blur and sampling" in [`docs/ENGINE.md`](docs/ENGINE.md).
+- **Motion blur:** every frame is the average of many sub-frames spread over a short shutter (`--shutter 0.2`, a fifth of the frame time), so fast motion leaves a continuous streak instead of a few stepped copies. `--samples auto` picks the count for each 32×32 tile of the frame: 12 where the image is still, 36 for ordinary camera motion, 108 or 324 for whips, slams and fast zooms. A tile stops once more sub-frames would no longer change it by more than `--tol` levels of 255 (default 3), and later sub-frames skip it, so a fast object over a still background costs little more than the object. `--refine frame` picks one count for the whole frame instead (slower, the sampler before tiles). `--samples N` takes a fixed N (`--samples 4` makes a quick draft; `--samples 1` is enough for the placeholder scenes, where nothing moves fast). How it works: "Motion blur and sampling" in [`docs/ENGINE.md`](docs/ENGINE.md).
 - **Pipeline:** two headless Chromes (`--workers 2`) render chunks of 8 frames (`--chunk`) in turn and stream them to one ffmpeg, which gets them in order: the file is the same as from one renderer. One renderer already keeps the GPU busy in the heavy scenes; the second fills the gaps in the light ones. Frames that wait for the encoder are buffered in memory up to `--mem-gb` (default 1) and then on disk up to `--spool-gb` (default 20, in the system temp folder), so the renderers don't wait for x264 in the light scenes and x264 catches up in the heavy ones.
 - **Other modes:** `stills`, `sheet` (contact sheets, `--cuts` for every scene boundary) and `perf`.
 
