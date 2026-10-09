@@ -1,28 +1,37 @@
-// Global post-processing: bloom + halation, chromatic aberration, tone shoulder,
-// film grain, vignette, fades/flash. Operates on the composited HDR (linear) frame.
+// Global post-processing: bloom + halation, chromatic aberration, tone shoulder, lifted
+// blacks, film grain, vignette, fades/flash. Operates on the composited HDR (linear) frame.
+//
+// The defaults are the soft look of docs/TREATMENT.md: the palette comes out as it is written
+// (the shoulder only touches values at and above white), only what is brighter than white
+// blooms (light sources: the sun, lamps, a phone screen, sparkles), blacks are lifted to a warm
+// brown, the grain is fine and the vignette gentle. No chromatic aberration, no shake.
 import * as THREE from 'three';
 import { FSPass, makeRT, W, H, SCALE } from './gl';
 
 /** The tone shoulder (linear HDR -> 0..1 linear), shared with the engine's sampling error estimate. */
 export const SHOULDER_GLSL = /* glsl */ `
 vec3 shoulder(vec3 x) {
-  // identity below k, smooth exponential shoulder above; very bright values desaturate toward white
-  const float k = 0.72;
+  // identity below k, smooth exponential shoulder above; very bright values desaturate toward white.
+  // (k is just under white: the pastel palette is full of values near 1 that must not shift.
+  // Only light sources, drawn brighter than white, roll off.)
+  const float k = 0.95;
   vec3 y = mix(x, k + (1.0 - k) * (1.0 - exp(-(x - k) / (1.0 - k))), step(k, x));
   float over = max(max(x.r, x.g), x.b);
-  return mix(y, vec3(1.0), smoothstep(2.0, 12.0, over) * 0.85);
+  return mix(y, vec3(1.0), smoothstep(1.5, 8.0, over) * 0.85);
 }`;
 
 export interface PostParams {
   exposure: number;
   bloom: number; // bloom strength
-  bloomThreshold: number; // linear luminance where bloom starts
+  bloomThreshold: number; // linear value where bloom starts (white = 1: above it, only light sources)
   bloomKnee: number; // soft knee width
   bloomRadius: number; // 0..1 upsample spread
-  halation: number; // red-orange film halation around highlights
+  halation: number; // peach halation around light sources
   ca: number; // chromatic aberration in px at the frame edge
   grain: number; // grain amplitude (sRGB units), ~0.04-0.1
   vignette: number; // 0..1
+  /** Lifted blacks, 0..1: black comes out as this share of `ink` (a deep warm brown), so nothing on screen is pure black. */
+  lift: number;
   hud: number; // HUD opacity (the crop marks): 0 = hidden, the default
   /** 0..1: the crop-mark frame (1 = in place, 0 = flown out past the edges). Shows only with `hud` > 0. */
   frame: number;
@@ -32,19 +41,20 @@ export interface PostParams {
   flash: number; // additive bone-white flash 0..1+
   shake: [number, number]; // frame offset in px
   zoom: number; // frame zoom (1 = none), for punch-ins on hits
-  invert: number; // 0..1 invert (ink <-> bone), applied before grain
+  invert: number; // 0..1 invert (dark <-> light), applied before grain
 }
 
 export const DEFAULT_POST: PostParams = {
   exposure: 1,
-  bloom: 0.55,
-  bloomThreshold: 0.85,
-  bloomKnee: 0.5,
-  bloomRadius: 0.75,
-  halation: 0.25,
-  ca: 1.2,
-  grain: 0.055,
-  vignette: 0.35,
+  bloom: 0.45,
+  bloomThreshold: 1.05,
+  bloomKnee: 0.1,
+  bloomRadius: 0.8,
+  halation: 0.1,
+  ca: 0,
+  grain: 0.022,
+  vignette: 0.18,
+  lift: 0.15,
   hud: 0,
   frame: 0,
   paper: 0,
@@ -116,7 +126,7 @@ ${SCALE === 1 ? `        c += texture(src, vUv + texel * vec2(-1, -1)).rgb; c +=
       }`, { src: { value: null }, prev: { value: null }, texel: { value: new THREE.Vector2() }, radius: { value: 1 } });
     this.final = new FSPass(/* glsl */ `
       uniform sampler2D src; uniform sampler2D bloomTex; uniform sampler2D haloTex; uniform sampler2D hudTex;
-      uniform float exposure, bloom, halation, ca, grain, vignette, hud, fade, flash, time, zoom, invert;
+      uniform float exposure, bloom, halation, ca, grain, vignette, lift, hud, fade, flash, time, zoom, invert;
       uniform vec2 shake; uniform vec2 res;
       ${SHOULDER_GLSL}
       void main() {
@@ -131,18 +141,20 @@ ${SCALE === 1 ? `        c += texture(src, vUv + texel * vec2(-1, -1)).rgb; c +=
         vec3 bl = texture(bloomTex, uv).rgb;
         vec3 ha = texture(haloTex, uv).rgb;
         col += bl * bloom;
-        col += vec3(1.0, 0.18, 0.04) * luma(ha) * halation;
+        col += C_PEACH * luma(ha) * halation;
         col *= exposure;
         // HUD is composited in linear space before the shoulder so it gets grain & vignette too
         vec4 h = texture(hudTex, vUv);
         col = mix(col, h.rgb / max(h.a, 1e-4), h.a * hud);
         col = shoulder(col);
-        col = mix(col, vec3(0.8515) - col * 0.84, invert); // ink<->bone in linear-ish space
-        col += C_BONE * flash;
+        col = mix(col, vec3(0.8515) - col * 0.84, invert); // dark<->light in linear-ish space
+        col += C_PAPER * flash;
         // vignette
         float v = smoothstep(0.95, 0.25, length(dc * vec2(1.0, 0.8)));
         col *= mix(1.0, v, vignette);
         col *= (1.0 - fade);
+        // lifted blacks: black comes out as a share of ink, a deep warm brown; white stays white
+        col += C_INK * lift * (1.0 - sat(col));
         vec3 s = toSRGB(sat(col));
         // film grain: two scales, stronger in mid-tones
 ${SCALE === 1 ? `        float g1 = hash12(gl_FragCoord.xy + fract(time * 13.37) * 1000.0) - 0.5;
@@ -158,7 +170,7 @@ ${SCALE === 1 ? `        float g1 = hash12(gl_FragCoord.xy + fract(time * 13.37)
       }`, {
       src: { value: null }, bloomTex: { value: null }, haloTex: { value: null }, hudTex: { value: null },
       exposure: { value: 1 }, bloom: { value: 0.5 }, halation: { value: 0.2 }, ca: { value: 1 }, grain: { value: 0.05 },
-      vignette: { value: 0.3 }, hud: { value: 1 }, fade: { value: 0 }, flash: { value: 0 }, time: { value: 0 },
+      vignette: { value: 0.3 }, lift: { value: 0 }, hud: { value: 1 }, fade: { value: 0 }, flash: { value: 0 }, time: { value: 0 },
       zoom: { value: 1 }, invert: { value: 0 }, shake: { value: new THREE.Vector2() }, res: { value: new THREE.Vector2(W, H) },
     });
   }
@@ -199,6 +211,7 @@ ${SCALE === 1 ? `        float g1 = hash12(gl_FragCoord.xy + fract(time * 13.37)
     f.ca!.value = p.ca;
     f.grain!.value = p.grain;
     f.vignette!.value = p.vignette;
+    f.lift!.value = p.lift;
     f.hud!.value = p.hud;
     f.fade!.value = p.fade;
     f.flash!.value = p.flash;

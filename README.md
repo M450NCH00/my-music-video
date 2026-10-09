@@ -18,7 +18,7 @@ Until the parts have scenes, one scene (`karaoke`) shows the lyrics as plain typ
 - `data/lyrics.json` — the start and end of every sung character.
 - `data/audio.json` — tempo (70 BPM: the song is in half time, the drums' own pulse is twice that), beats, downbeats, sections, drum/vocal onsets and loudness envelopes.
 - `app/` — the renderer: TypeScript + three.js, bun + Vite.
-  - `src/engine/` — renderer core: timeline playback, post-processing (bloom, halation, grain), typography, GPU line batches, the HUD (hidden by default).
+  - `src/engine/` — renderer core: timeline playback, the palette, post-processing (bloom on light sources, lifted blacks, fine grain, a gentle vignette), typography, GPU line batches, the HUD (hidden by default).
   - `public/fonts/` — the fonts: LXGW WenKai (霞鹜文楷) for the lyrics and Noto Sans SC for small text, both cut down to the characters the video shows, and the Latin fonts the engine came with.
   - `src/scenes/` — one module per scene.
   - `src/timeline.ts` — the edit: which scene plays when.
@@ -73,7 +73,7 @@ bun scripts/render.ts video --scale 2 --samples auto --shutter 0.2 --x264 aq-mod
 
 - **Output:** a true 3840×2160 render (not an upscale): every layer, line and shader is rendered at the physical resolution. Scenes are laid out in 1920×1080 logical pixels, so the 4K frame looks like the 1080p one, only sharper.
 - **Cost:** GPU-bound, and four times the pixels of the 1080p render. Memory is the limit: each headless Chrome and ffmpeg can each take several GB at 4K (the shorter x264 lookahead above keeps ffmpeg down).
-- **Encoding:** the film grain is rendered per 4K pixel, which is expensive to encode: at the default CRF 16 the file runs at about 670 Mbit/s (13 GB for the song, 8× the 1080p file), `--crf 18` gives about 450 Mbit/s and `--crf 20` about 230 Mbit/s.
+- **Encoding:** the film grain is rendered per 4K pixel, so a 4K file is several times the size of the 1080p one; a higher `--crf` (18 or 20) makes it smaller.
 - `--scale 2` works with every mode. `stills` then saves full-resolution PNGs, and `perf` measures 4K frame times. In the browser preview, add `&scale=2` to the URL.
 
 ## Regenerate the timing data
