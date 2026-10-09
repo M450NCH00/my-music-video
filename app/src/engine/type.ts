@@ -1,5 +1,11 @@
 // Typography: font registry (Canvas2D via FontFace + outlines via opentype.js),
 // glyph layout, text outlines as Path2D, and point sampling of text for particle effects.
+//
+// The video's own fonts are F.hand() (LXGW WenKai, the handwritten-style face of the lyrics) and
+// F.sans() (Noto Sans SC, for small UI text). Both are SUBSETS made by analysis/make_fonts.py:
+// they hold the characters of the lyrics and the title, punctuation, digits, Latin letters and
+// that script's EXTRA list. Any other character is drawn in a fallback font; layout() and
+// measure() warn in the console when that happens.
 import * as opentype from 'opentype.js';
 
 /**
@@ -9,11 +15,11 @@ import * as opentype from 'opentype.js';
 export const ARCHIVO_WIDTHS = [620, 750, 875, 1000, 1125, 1250] as const;
 export const ARCHIVO_WEIGHTS = [300, 500, 700, 900] as const;
 
-/**
- * `features`: OpenType features switched on for the face (Canvas2D has no font-feature-settings).
- * `variation`: axis settings of a variable font, so one file serves several families.
- */
-type FontDef = { family: string; file: string; features?: string; variation?: string };
+export const HAND_WEIGHTS = [300, 400, 500] as const;
+export const SANS_WEIGHTS = [400, 500, 700] as const;
+
+/** `features`: OpenType features switched on for the face (Canvas2D has no font-feature-settings). */
+type FontDef = { family: string; file: string; features?: string };
 const DEFS: FontDef[] = [];
 for (const w of ARCHIVO_WIDTHS) for (const wt of ARCHIVO_WEIGHTS) DEFS.push({ family: `Archivo-${w}-${wt}`, file: `Archivo-w${w}-${wt}.ttf` });
 for (const w of [750, 1000]) for (const wt of [400, 800]) DEFS.push({ family: `ArchivoItalic-${w}-${wt}`, file: `ArchivoItalic-w${w}-${wt}.ttf` });
@@ -25,12 +31,19 @@ for (const wt of [400, 600]) {
 for (const [n, f] of [['300', 'Light'], ['400', 'Regular'], ['500', 'Medium'], ['600', 'SemiBold'], ['700', 'Bold']] as const)
   DEFS.push({ family: `Plex-${n}`, file: `src/IBMPlexMono-${f}.ttf` });
 DEFS.push({ family: 'PlexItalic-400', file: 'src/IBMPlexMono-Italic.ttf' });
-// Noto Sans SC (the Chinese lyrics): one variable file, a family per weight
-export const NOTO_SC_WEIGHTS = [300, 400, 500, 700, 900] as const;
-for (const wt of NOTO_SC_WEIGHTS) DEFS.push({ family: `NotoSC-${wt}`, file: 'src/NotoSansSC[wght].ttf', variation: `"wght" ${wt}` });
+for (const wt of HAND_WEIGHTS) DEFS.push({ family: `WenKai-${wt}`, file: `LXGWWenKai-${wt}.ttf` });
+for (const wt of SANS_WEIGHTS) DEFS.push({ family: `NotoSC-${wt}`, file: `NotoSansSC-${wt}.ttf` });
 
 /** Convenience family names. */
 export const F = {
+  /** LXGW WenKai (霞鹜文楷), handwritten style: the lyrics, the title, anything written by hand. Weights 300 / 400 / 500. */
+  hand(weight = 400): string {
+    return `WenKai-${nearest(HAND_WEIGHTS as unknown as number[], weight)}`;
+  },
+  /** Noto Sans SC: small UI text (chat bubbles, labels). Weights 400 / 500 / 700. */
+  sans(weight = 400): string {
+    return `NotoSC-${nearest(SANS_WEIGHTS as unknown as number[], weight)}`;
+  },
   /** Archivo at nearest available width/weight. width in [62..125] (percent), weight 300..900 */
   archivo(width = 100, weight = 700): string {
     const w = nearest(ARCHIVO_WIDTHS as unknown as number[], width * 10);
@@ -42,10 +55,6 @@ export const F = {
   },
   serif(weight = 400, italic = false): string {
     return `${italic ? 'CormorantItalic' : 'Cormorant'}-${weight < 500 ? 400 : 600}`;
-  },
-  /** Noto Sans SC at the nearest available weight (300..900): Chinese text. */
-  sc(weight = 700): string {
-    return `NotoSC-${nearest(NOTO_SC_WEIGHTS as unknown as number[], weight)}`;
   },
   mono(weight = 400, italic = false): string {
     if (italic) return 'PlexItalic-400';
@@ -66,19 +75,13 @@ const otCache = new Map<string, opentype.Font>();
 const bufCache = new Map<string, ArrayBuffer>();
 
 export async function loadFonts(): Promise<void> {
-  const files = new Map<string, Promise<ArrayBuffer>>();
-  const file = (f: string) => {
-    if (!files.has(f)) files.set(f, fetch(`fonts/${encodeURIComponent(f).replace(/%2F/g, '/')}`).then((r) => r.arrayBuffer()));
-    return files.get(f)!;
-  };
   await Promise.all(
     DEFS.map(async (d) => {
-      const buf = await file(d.file);
+      const r = await fetch(`fonts/${d.file}`);
+      if (!r.ok) throw new Error(`font file not found: fonts/${d.file}`);
+      const buf = await r.arrayBuffer();
       bufCache.set(d.family, buf);
-      const desc: FontFaceDescriptors = {};
-      if (d.features) desc.featureSettings = d.features;
-      if (d.variation) desc.variationSettings = d.variation;
-      const ff = new FontFace(d.family, buf, desc);
+      const ff = new FontFace(d.family, buf, d.features ? { featureSettings: d.features } : undefined);
       await ff.load();
       document.fonts.add(ff);
     }),
@@ -98,9 +101,40 @@ export function ot(family: string): opentype.Font {
   return f;
 }
 
+/**
+ * The characters of `text` that `family` has no glyph for (each once). The Chinese fonts are
+ * subsets, so this is how a character that still has to be added to them shows up.
+ */
+export function missingGlyphs(text: string, family: string): string {
+  const f = ot(family);
+  let out = '';
+  for (const ch of new Set(Array.from(text))) if (ch !== '\n' && f.charToGlyphIndex(ch) === 0) out += ch;
+  return out;
+}
+
+const checked = new Set<string>();
+/** Warn, once per string, when one of our fonts would hand a character of `text` to a fallback font. */
+function checkGlyphs(text: string, family: string) {
+  const key = `${family}\n${text}`;
+  if (checked.has(key) || !bufCache.has(family)) return;
+  checked.add(key);
+  const gone = missingGlyphs(text, family);
+  if (gone) console.warn(`font ${family} has no glyph for "${gone}" (in "${text}"): it will be drawn in a fallback font. Add it to EXTRA in analysis/make_fonts.py and run that script again.`);
+}
+
+/**
+ * How far above its baseline the ink of a Chinese character is centred, as a fraction of the font
+ * size (measured over the lyrics: 0.35 in LXGW WenKai, 0.38 in Noto Sans SC). To centre a character
+ * on (x, y): `textAlign = 'center'`, alphabetic baseline, `fillText(ch, x, y + CJK_MID * size)`.
+ */
+export const CJK_MID = 0.36;
+
+/** Chinese characters and full-width punctuation: glyphs that fill a square of the font size. */
+export const isCJK = (ch: string) => /[\u2e80-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(ch);
+
 export interface Glyph {
   ch: string;
-  i: number; // char index in string
+  i: number; // index of the character in Array.from(text): Chinese text has one glyph per character
   x: number; // left edge (px), relative to the text origin
   w: number; // advance width (px)
 }
@@ -128,6 +162,7 @@ function mctx() {
  * `tracking` is extra letter spacing in px.
  */
 export function layout(text: string, family: string, size: number, tracking = 0): TextLayout {
+  checkGlyphs(text, family);
   const c = mctx();
   c.font = font(family, size);
   const glyphs: Glyph[] = [];
@@ -181,6 +216,7 @@ export function smart(s: string): string {
 export const plain = (s: string) => s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, '...');
 
 export function measure(text: string, family: string, size: number, tracking = 0) {
+  checkGlyphs(text, family);
   const c = mctx();
   c.font = font(family, size);
   return c.measureText(text).width + Math.max(0, Array.from(text).length - 1) * tracking;

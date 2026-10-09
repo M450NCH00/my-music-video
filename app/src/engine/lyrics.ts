@@ -13,23 +13,34 @@ export interface Word {
   at: number; // offset of the token in the line's text (UTF-16 units)
   gi: number; // global word index
 }
+/** One character of a line's text, as it is laid out: `layout(line.text, …).glyphs[k]` draws `line.chars[k]`. */
+export interface LineChar {
+  ch: string;
+  /** Offset in the line's text (UTF-16 units). */
+  at: number;
+  /** The sung token it belongs to (a Chinese character with the punctuation attached to it); null for a space. */
+  word: Word | null;
+}
 export interface Line {
   i: number;
   text: string;
   start: number;
   end: number;
   words: Word[];
+  /** filled in by Lyrics: the text character by character, each with the token that sings it */
+  chars: LineChar[];
 }
 
 export class Lyrics {
   lines: Line[];
   words: Word[];
-  constructor(j: { lines: Omit<Line, 'words'> & { words: Omit<Word, 'line' | 'index' | 'gi' | 'at'>[] }[] | any[] }) {
+  constructor(j: { lines: Omit<Line, 'words' | 'chars'> & { words: Omit<Word, 'line' | 'index' | 'gi' | 'at'>[] }[] | any[] }) {
     // display text gets curly apostrophes and quotes (the data keeps the typed ones); mono UI
     // text that wants them straight uses plain()
     this.lines = (j.lines as any[]).map((l, li) => ({
       ...l,
       i: li,
+      chars: [],
       text: smart(l.text),
       words: (l.words as any[]).map((w, wi) => ({ ...w, w: smart(w.w), line: li, index: wi, gi: 0, at: 0 })),
     }));
@@ -41,6 +52,12 @@ export class Lyrics {
         w.at = k < 0 ? p : k;
         p = w.at + w.w.length;
       }
+      let u = 0;
+      l.chars = Array.from(l.text).map((ch) => {
+        const at = u;
+        u += ch.length;
+        return { ch, at, word: l.words.find((w) => at >= w.at && at < w.at + w.w.length) ?? null };
+      });
     }
     this.words = this.lines.flatMap((l) => l.words);
     this.words.forEach((w, i) => (w.gi = i));

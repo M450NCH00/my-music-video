@@ -30,7 +30,7 @@ export default class Karaoke extends Scene {
   private sets: Set[] = [];
 
   override init() {
-    const family = F.sc(700);
+    const family = F.hand(500);
     this.sets = this.ctx.lyrics.lines.map((line) => {
       const size = fitSize(line.text, family, MAX_W, MAX_SIZE);
       const lay = layout(line.text, family, size);
@@ -101,7 +101,7 @@ export default class Karaoke extends Scene {
       const a = shown * (1 - prog(t, nx.line.start - LEAD - 0.25, nx.line.start - LEAD));
       if (a > 0.003) {
         const size = nx.size * 0.42;
-        c.font = font(F.sc(400), size);
+        c.font = font(F.sans(400), size);
         c.fillStyle = rgba('ash', 0.55 * a);
         c.textAlign = 'center';
         c.fillText(nx.line.text, W / 2, H / 2 + 190);
@@ -114,7 +114,7 @@ export default class Karaoke extends Scene {
     const ta = clamp(Math.min(smoothstep(prevEnd, prevEnd + 1.2, t), 1 - smoothstep(nextIn - 1.4, nextIn - 0.5, t), smoothstep(0, 1.2, t))) * (1 - shown);
     if (ta > 0.003) {
       c.textAlign = 'center';
-      c.font = font(F.sc(900), 168);
+      c.font = font(F.hand(500), 168);
       c.fillStyle = rgba('bone', ta);
       c.letterSpacing = '18px';
       c.fillText(TITLE, W / 2 + 9, H / 2 + 56);

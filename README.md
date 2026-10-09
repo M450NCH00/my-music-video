@@ -19,6 +19,7 @@ Until the parts have scenes, one scene (`karaoke`) shows the lyrics as plain typ
 - `data/audio.json` — tempo (70 BPM: the song is in half time, the drums' own pulse is twice that), beats, downbeats, sections, drum/vocal onsets and loudness envelopes.
 - `app/` — the renderer: TypeScript + three.js, bun + Vite.
   - `src/engine/` — renderer core: timeline playback, post-processing (bloom, halation, grain), typography, GPU line batches, the HUD (hidden by default).
+  - `public/fonts/` — the fonts: LXGW WenKai (霞鹜文楷) for the lyrics and Noto Sans SC for small text, both cut down to the characters the video shows, and the Latin fonts the engine came with.
   - `src/scenes/` — one module per scene.
   - `src/timeline.ts` — the edit: which scene plays when.
   - `scripts/render.ts` — offline renderer (headless Chrome → raw frames over WebSocket → ffmpeg).
@@ -96,10 +97,21 @@ uv run python check.py           # report: line windows, confidence, repeated li
 
 The models download about 1.5 GB of weights into `analysis/.cache/`; delete that folder afterwards.
 
+## Fonts
+
+The Chinese fonts in `app/public/fonts/` are subsets (about 100 KB each instead of 17–28 MB): they hold the characters of the lyrics and the title, punctuation, digits, Latin letters and a short list of extras. A character outside that set is drawn in a fallback font, and the renderer warns in the console. To add characters, put them in `EXTRA` in `analysis/make_fonts.py` and rebuild:
+
+```sh
+cd analysis
+uv run python make_fonts.py
+```
+
+The first run downloads the full fonts (about 100 MB) into `analysis/.cache/fonts/`.
+
 ## Credits
 
 - **Renderer:** the engine comes from the code-rendered video for "I'm Upping My P(doom)", made with Claude in Claude Code.
-- **Fonts:** Noto Sans SC, Archivo, IBM Plex Mono and Cormorant Garamond (SIL Open Font License). Single-stroke EMS and Hershey fonts via the `hersheytext` package (OFL / public domain).
+- **Fonts:** [LXGW WenKai](https://github.com/lxgw/LxgwWenKai) (霞鹜文楷) and [Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC), as subsets, and Archivo, IBM Plex Mono and Cormorant Garamond: all under the SIL Open Font License (the licence texts are in `app/public/fonts/`). Single-stroke EMS and Hershey fonts via the `hersheytext` package (OFL / public domain).
 
 ## License
 
