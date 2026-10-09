@@ -2,7 +2,7 @@
 import { smart } from './type';
 
 export interface Word {
-  w: string; // display token (punctuation attached, typographic quotes: don’t, ’cause)
+  w: string; // display token: one Chinese character or one Latin word (punctuation attached, typographic quotes)
   start: number;
   end: number;
   conf?: number;
@@ -10,6 +10,7 @@ export interface Word {
   /** filled in by Lyrics: */
   line: number;
   index: number; // index within line
+  at: number; // offset of the token in the line's text (UTF-16 units)
   gi: number; // global word index
 }
 export interface Line {
@@ -23,15 +24,24 @@ export interface Line {
 export class Lyrics {
   lines: Line[];
   words: Word[];
-  constructor(j: { lines: Omit<Line, 'words'> & { words: Omit<Word, 'line' | 'index' | 'gi'>[] }[] | any[] }) {
+  constructor(j: { lines: Omit<Line, 'words'> & { words: Omit<Word, 'line' | 'index' | 'gi' | 'at'>[] }[] | any[] }) {
     // display text gets curly apostrophes and quotes (the data keeps the typed ones); mono UI
     // text that wants them straight uses plain()
     this.lines = (j.lines as any[]).map((l, li) => ({
       ...l,
       i: li,
       text: smart(l.text),
-      words: (l.words as any[]).map((w, wi) => ({ ...w, w: smart(w.w), line: li, index: wi, gi: 0 })),
+      words: (l.words as any[]).map((w, wi) => ({ ...w, w: smart(w.w), line: li, index: wi, gi: 0, at: 0 })),
     }));
+    // where each token sits in its line (tokens follow each other, separated by spaces or by nothing)
+    for (const l of this.lines) {
+      let p = 0;
+      for (const w of l.words) {
+        const k = l.text.indexOf(w.w, p);
+        w.at = k < 0 ? p : k;
+        p = w.at + w.w.length;
+      }
+    }
     this.words = this.lines.flatMap((l) => l.words);
     this.words.forEach((w, i) => (w.gi = i));
   }
@@ -109,13 +119,13 @@ export class Lyrics {
     let chars = 0;
     for (const w of l.words) {
       const p = Lyrics.wordProgress(w, t);
-      chars += p * w.w.length;
+      if (p <= 0) break;
+      chars = w.at + p * w.w.length;
       if (p < 1) break;
-      chars += 1; // the space
     }
     return Math.min(chars, l.text.length);
   }
 }
 
-export const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9()]/g, '');
+export const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9()\u3400-\u9fff]/g, '');
 const fold = (s: string) => s.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"');

@@ -9,8 +9,11 @@ import * as opentype from 'opentype.js';
 export const ARCHIVO_WIDTHS = [620, 750, 875, 1000, 1125, 1250] as const;
 export const ARCHIVO_WEIGHTS = [300, 500, 700, 900] as const;
 
-/** `features`: OpenType features switched on for the face (Canvas2D has no font-feature-settings). */
-type FontDef = { family: string; file: string; features?: string };
+/**
+ * `features`: OpenType features switched on for the face (Canvas2D has no font-feature-settings).
+ * `variation`: axis settings of a variable font, so one file serves several families.
+ */
+type FontDef = { family: string; file: string; features?: string; variation?: string };
 const DEFS: FontDef[] = [];
 for (const w of ARCHIVO_WIDTHS) for (const wt of ARCHIVO_WEIGHTS) DEFS.push({ family: `Archivo-${w}-${wt}`, file: `Archivo-w${w}-${wt}.ttf` });
 for (const w of [750, 1000]) for (const wt of [400, 800]) DEFS.push({ family: `ArchivoItalic-${w}-${wt}`, file: `ArchivoItalic-w${w}-${wt}.ttf` });
@@ -22,6 +25,9 @@ for (const wt of [400, 600]) {
 for (const [n, f] of [['300', 'Light'], ['400', 'Regular'], ['500', 'Medium'], ['600', 'SemiBold'], ['700', 'Bold']] as const)
   DEFS.push({ family: `Plex-${n}`, file: `src/IBMPlexMono-${f}.ttf` });
 DEFS.push({ family: 'PlexItalic-400', file: 'src/IBMPlexMono-Italic.ttf' });
+// Noto Sans SC (the Chinese lyrics): one variable file, a family per weight
+export const NOTO_SC_WEIGHTS = [300, 400, 500, 700, 900] as const;
+for (const wt of NOTO_SC_WEIGHTS) DEFS.push({ family: `NotoSC-${wt}`, file: 'src/NotoSansSC[wght].ttf', variation: `"wght" ${wt}` });
 
 /** Convenience family names. */
 export const F = {
@@ -36,6 +42,10 @@ export const F = {
   },
   serif(weight = 400, italic = false): string {
     return `${italic ? 'CormorantItalic' : 'Cormorant'}-${weight < 500 ? 400 : 600}`;
+  },
+  /** Noto Sans SC at the nearest available weight (300..900): Chinese text. */
+  sc(weight = 700): string {
+    return `NotoSC-${nearest(NOTO_SC_WEIGHTS as unknown as number[], weight)}`;
   },
   mono(weight = 400, italic = false): string {
     if (italic) return 'PlexItalic-400';
@@ -56,11 +66,19 @@ const otCache = new Map<string, opentype.Font>();
 const bufCache = new Map<string, ArrayBuffer>();
 
 export async function loadFonts(): Promise<void> {
+  const files = new Map<string, Promise<ArrayBuffer>>();
+  const file = (f: string) => {
+    if (!files.has(f)) files.set(f, fetch(`fonts/${encodeURIComponent(f).replace(/%2F/g, '/')}`).then((r) => r.arrayBuffer()));
+    return files.get(f)!;
+  };
   await Promise.all(
     DEFS.map(async (d) => {
-      const buf = await (await fetch(`fonts/${d.file}`)).arrayBuffer();
+      const buf = await file(d.file);
       bufCache.set(d.family, buf);
-      const ff = new FontFace(d.family, buf, d.features ? { featureSettings: d.features } : undefined);
+      const desc: FontFaceDescriptors = {};
+      if (d.features) desc.featureSettings = d.features;
+      if (d.variation) desc.variationSettings = d.variation;
+      const ff = new FontFace(d.family, buf, desc);
       await ff.load();
       document.fonts.add(ff);
     }),

@@ -1,4 +1,4 @@
-"""Shared paths / cache setup for the pdoom analysis scripts.
+"""Shared paths / cache setup for the analysis scripts.
 
 Import this module FIRST (before torch / huggingface / mlx imports) so that all
 model downloads land in analysis/.cache/.
@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent          # analysis/
-PROJECT = ROOT.parent                            # pdoom/
+PROJECT = ROOT.parent                            # repo root
 CACHE = ROOT / ".cache"
 for var, sub in [("TORCH_HOME", "torch"), ("HF_HOME", "hf"), ("HF_HUB_CACHE", "hf/hub"),
                  ("XDG_CACHE_HOME", "xdg"), ("HUGGINGFACE_HUB_CACHE", "hf/hub"),
@@ -16,8 +16,9 @@ for var, sub in [("TORCH_HOME", "torch"), ("HF_HOME", "hf"), ("HF_HUB_CACHE", "h
     os.environ.setdefault(var, str(CACHE / sub))
     (CACHE / sub).mkdir(parents=True, exist_ok=True)
 
-AUDIO = PROJECT / "audio" / "pdoom.mp3"
-STEMS = ROOT / "stems" / "htdemucs_ft" / "pdoom"
+AUDIO = PROJECT / "audio" / "song.mp3"
+MIX_WAV = ROOT / "work" / "mix.wav"            # gapless ffmpeg decode of AUDIO, 44.1 kHz (separate.py)
+STEMS = ROOT / "stems" / "htdemucs_ft" / "song"
 LYRICS_SRC = PROJECT / "lyrics" / "lyrics.src.js"
 DATA = PROJECT / "data"
 QA = ROOT / "qa"
@@ -35,12 +36,10 @@ def load_lyrics_src():
     return [tuple(x) for x in json.loads(body)]
 
 
-# The Demucs stems were rendered from an mp3 decode that did NOT trim the LAME
-# encoder delay (1105 samples @ 48 kHz = 23.0 ms). The gapless decode of the mp3
-# (ffmpeg / libsndfile / browsers) is our time reference, so stems are shifted
-# earlier by 1015 samples @ 44.1 kHz (measured by cross-correlation, constant
-# over the whole song).
-STEM_OFFSET_SAMPLES = 1015
+# separate.py runs Demucs on the gapless ffmpeg decode of the mp3 (the time
+# reference: ffmpeg / libsndfile / browsers agree on it), so the stems need no
+# shift.
+STEM_OFFSET_SAMPLES = 0
 STEM_OFFSET_SEC = STEM_OFFSET_SAMPLES / 44100
 
 
@@ -59,29 +58,10 @@ def load_stem(name, sr=None, mono=True):
     return y, s
 
 
-KARAOKE = ROOT / "stems" / "karaoke"
-
-
-def load_lead(sr=None, mono=True):
-    """Lead vocal only (mel-band-roformer karaoke model run on the mp3; already
-    in gapless-mp3 time, no offset)."""
-    import soundfile as sf
-    import numpy as np
-    y, s = sf.read(KARAOKE / "lead.wav", dtype="float32", always_2d=True)
-    y = y.mean(axis=1) if mono else y.T
-    if sr and sr != s:
-        import soxr
-        y = soxr.resample(y, s, sr) if mono else np.stack([soxr.resample(c, s, sr) for c in y])
-        s = sr
-    return y, s
-
-
 def load_vocal_source(name, sr=None):
     """'vocals' = Demucs vocal stem (mono sum), 'vocL'/'vocR' = its left/right
-    channel (choruses are double-tracked and panned L/R, so each channel is
-    closer to a single voice), 'lead' = karaoke lead."""
-    if name == "lead":
-        return load_lead(sr)
+    channel (double-tracked vocals are panned L/R, so each channel is closer to
+    a single voice)."""
     if name in ("vocL", "vocR"):
         y, s = load_stem("vocals", sr=sr, mono=False)
         return y[0 if name == "vocL" else 1], s

@@ -1,8 +1,7 @@
 """Compute frame-wise CTC log-probabilities (20 ms frames) for the vocal stem.
 
-Two acoustic models give two independent alignments:
-  mms   : torchaudio MMS_FA (multilingual, romanized chars, trained for alignment)
-  lv60k : torchaudio WAV2VEC2_ASR_LARGE_LV60K_960H (English chars)
+Model: torchaudio MMS_FA (multilingual, romanized chars, trained for alignment),
+run on the vocal stem's mono sum and on its left and right channel.
 Emissions are computed on overlapping chunks with context and stitched, then
 cached to work/emission_<name>.npy (shape [frames, vocab]).
 """
@@ -16,13 +15,9 @@ HOP = 320  # samples @16k -> 20 ms
 
 
 def compute(name, chunk_s=20.0, ctx_s=3.0, device=None, source="vocals"):
-    bundle = {"mms": torchaudio.pipelines.MMS_FA,
-              "lv60k": torchaudio.pipelines.WAV2VEC2_ASR_LARGE_LV60K_960H}[name]
-    if name == "mms":
-        model = bundle.get_model(with_star=False)
-    else:
-        model = bundle.get_model()
-    device = device or ("mps" if torch.backends.mps.is_available() else "cpu")
+    bundle = {"mms": torchaudio.pipelines.MMS_FA}[name]
+    model = bundle.get_model(with_star=False)
+    device = device or ("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     model = model.to(device).eval()
     y, sr = common.load_vocal_source(source, sr=16000)
     y = y / (np.abs(y).max() + 1e-9)
@@ -51,7 +46,6 @@ def compute(name, chunk_s=20.0, ctx_s=3.0, device=None, source="vocals"):
 
 
 if __name__ == "__main__":
-    srcs = sys.argv[1:] or ["vocals", "lead", "vocL", "vocR"]
+    srcs = sys.argv[1:] or ["vocals", "vocL", "vocR"]
     for src in srcs:
-        for n in ("mms", "lv60k"):
-            compute(n, source=src)
+        compute("mms", source=src)

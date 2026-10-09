@@ -1,8 +1,9 @@
 """CTC forced alignment of the full lyric text against the vocal stem.
 
-* Emissions: two char-level CTC models (MMS_FA, wav2vec2 LV60K-960h) mapped to
-  a common alphabet (blank, a-z, ').  They can be used individually or fused
-  (probability mixture) for a more robust single path.
+* Emissions: the char-level CTC model MMS_FA (multilingual, romanized text, so
+  Chinese is aligned as toneless pinyin) mapped to the alphabet (blank, a-z, ').
+  The vocal stem's mono sum, left and right channel can be used individually or
+  fused (probability mixture) for a more robust single path.
 * All lines are aligned in ONE Viterbi pass over the whole song.  A "garbage"
   star token sits between lines (and at both ends); its per-frame score is
   (best token log-prob - margin), so it absorbs ad-libs / backing vocals /
@@ -15,22 +16,15 @@ import common  # noqa: F401
 import numpy as np
 import numba
 import torchaudio
-from pron import pron
 
 FRAME = 0.02  # s per emission frame
-N_FRAMES = 7833
 ALPHA = ["-"] + list("abcdefghijklmnopqrstuvwxyz'")
 AIDX = {c: i for i, c in enumerate(ALPHA)}
 
 
 def _common_logp(model):
     em = np.load(common.WORK / f"emission_{model}.npy").astype(np.float64)
-    if len(em) < N_FRAMES:
-        em = np.concatenate([em, np.repeat(em[-1:], N_FRAMES - len(em), 0)])
-    if model.startswith("mms"):
-        labs = list(torchaudio.pipelines.MMS_FA.get_labels(star=None))
-    else:
-        labs = list(torchaudio.pipelines.WAV2VEC2_ASR_LARGE_LV60K_960H.get_labels())
+    labs = list(torchaudio.pipelines.MMS_FA.get_labels(star=None))
     out = np.full((em.shape[0], len(ALPHA)), -1e4)
     blank_cols = [labs.index("-")] + ([labs.index("|")] if "|" in labs else [])
     out[:, 0] = np.logaddexp.reduce(em[:, blank_cols], axis=1)
@@ -43,16 +37,12 @@ def _common_logp(model):
 
 
 def emissions(kind):
-    """kind: '<model>[_<source>]' with model in mms|lv60k|fused, source in
-    ''(demucs mono)|lead|vocL|vocR; or 'fused6' = mixture of both models on
-    mono, left and right channels."""
-    if kind == "fused6":
-        es = [_common_logp(m + s) for m in ("mms", "lv60k") for s in ("", "_vocL", "_vocR")]
-        return np.logaddexp.reduce(np.stack(es), axis=0) - np.log(len(es))
-    if kind.startswith("fused"):
-        suf = kind[len("fused"):]
-        a, b = _common_logp("mms" + suf), _common_logp("lv60k" + suf)
-        return np.logaddexp(a, b) - np.log(2)
+    """kind: 'mms[_<source>]' with source in ''(demucs mono)|vocL|vocR; or
+    'fused3' = mixture of the mono, left and right channels."""
+    if kind == "fused3":
+        es = [_common_logp("mms" + s) for s in ("", "_vocL", "_vocR")]
+        n = min(len(e) for e in es)
+        return np.logaddexp.reduce(np.stack([e[:n] for e in es]), axis=0) - np.log(len(es))
     return _common_logp(kind)
 
 
@@ -107,13 +97,12 @@ def _viterbi(E, tgt, lo, hi):
     return path, score
 
 
-def build_targets(lines_tokens, pron_override=None):
+def build_targets(lines_prons):
     """Returns (tgt ids, index list, star id). index: (li, ti, si, pos_a, pos_b)."""
     star = len(ALPHA)
     tgt, index = [star], []
-    for li, toks in enumerate(lines_tokens):
-        for ti, tok in enumerate(toks):
-            subs = (pron_override or {}).get((li, ti)) or pron(tok)
+    for li, toks in enumerate(lines_prons):
+        for ti, subs in enumerate(toks):
             for si, sw in enumerate(subs):
                 a = len(tgt)
                 tgt.extend(AIDX[c] for c in sw)
@@ -122,9 +111,10 @@ def build_targets(lines_tokens, pron_override=None):
     return tgt, index, star
 
 
-def align(E, lines_tokens, margin=1.5, anchors=None, pron_override=None, line_windows=None):
+def align(E, lines_prons, margin=1.5, anchors=None, line_windows=None):
     """Global alignment.
 
+    lines_prons: per line, per token, its pronunciation sub-words (pron.line_prons).
     anchors: {(li, ti, si): (t_lo, t_hi)} seconds window for the subword's
              first char (t_lo) / last char (t_hi) occupancy.
     line_windows: {li: (t_lo, t_hi)} every token of the line must lie inside.
@@ -133,7 +123,7 @@ def align(E, lines_tokens, margin=1.5, anchors=None, pron_override=None, line_wi
     T = E.shape[0]
     star_col = E.max(axis=1, keepdims=True) - margin
     Ex = np.concatenate([E, star_col], axis=1)
-    tgt, index, star = build_targets(lines_tokens, pron_override)
+    tgt, index, star = build_targets(lines_prons)
     tgt = np.array(tgt, np.int64)
     lo = np.zeros(len(tgt), np.int64)
     hi = np.full(len(tgt), T - 1, np.int64)
@@ -161,12 +151,12 @@ def align(E, lines_tokens, margin=1.5, anchors=None, pron_override=None, line_wi
     return spans, float(score), path, tgt
 
 
-def word_table(spans, lines_tokens):
+def word_table(spans, lines_tokens, lines_prons):
     out = []
     for li, toks in enumerate(lines_tokens):
         for ti, tok in enumerate(toks):
             sp = spans[(li, ti)]
-            out.append(dict(li=li, ti=ti, w=tok, start=sp[0][0], end=sp[-1][1],
+            out.append(dict(li=li, ti=ti, w=tok, pron=lines_prons[li][ti], start=sp[0][0], end=sp[-1][1],
                             conf=float(np.mean([s[2] for s in sp])),
                             subs=[(s[0], s[1]) for s in sp]))
     return out

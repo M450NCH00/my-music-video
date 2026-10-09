@@ -5,10 +5,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import librosa
+matplotlib.rcParams["font.sans-serif"] = ["Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "DejaVu Sans"]
 
 y, sr = common.load_stem("vocals", sr=22050)
 f = dict(np.load(common.WORK / "vocal_feats.npz")); ht = float(f["hop_s"])
-_d = json.loads((common.WORK / "align_debug.json").read_text())
+_d = json.loads((common.WORK / "align_debug.json").read_text(encoding="utf-8"))
+_g = json.loads((common.DATA / "audio.json").read_text())
 dbg, alt = _d["words"], _d["alt"]
 
 
@@ -34,7 +36,7 @@ def zoom(t0, t1, name):
     ax[2].plot(tt, f["mid_db"][i0:i1] - 40, "tab:red", lw=0.8, label="mid-40")
     axb = ax[2].twinx(); axb.fill_between(tt, 0, f["onset"][i0:i1], color="tab:green", alpha=0.3)
     ax[2].legend(loc="upper left", fontsize=7); ax[2].set_ylim(-70, 5)
-    P, OFF = 60 / 132, 0.708
+    P, OFF = _g["beat_period"], _g["beats"][0]
     for n in range(int((t0 - OFF) / P * 4) - 1, int((t1 - OFF) / P * 4) + 2):
         tb = OFF + n * P / 4
         if t0 <= tb <= t1:
@@ -51,10 +53,8 @@ def zoom(t0, t1, name):
         ax[3].plot([w["ctc_start"], w["ctc_end"]], [0.6, 0.6], lw=6, alpha=0.5, color="tab:blue")
         i = dbg.index(w)
         ax[3].plot([alt["mms"][i]["start"]] * 2, [0.1, 0.45], color="tab:purple", lw=2)
-        ax[3].plot([alt["lv60k"][i]["start"]] * 2, [0.1, 0.45], color="tab:orange", lw=2)
-        ax[3].plot([alt["fused_lead"][i]["start"]] * 2, [0.1, 0.3], color="tab:green", lw=2)
-        if w.get("whisper"):
-            ax[3].plot([w["whisper"][0]] * 2, [0.1, 0.35], color="k", lw=2)
+        ax[3].plot([alt["mms_vocL"][i]["start"]] * 2, [0.1, 0.45], color="tab:orange", lw=2)
+        ax[3].plot([alt["mms_vocR"][i]["start"]] * 2, [0.1, 0.3], color="tab:green", lw=2)
     ax[3].set_ylim(0, 1.6); ax[3].set_yticks([])
     ax[3].set_xticks(np.arange(np.ceil(t0 * 20) / 20, t1, 0.05), minor=True)
     ax[3].set_xticks(np.arange(np.ceil(t0 * 5) / 5, t1, 0.2))
