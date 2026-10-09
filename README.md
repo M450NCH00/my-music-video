@@ -1,8 +1,14 @@
-# 下课再见 — music video
+# 《下课再见》 music video
 
-A generative, code-rendered music video with character-synced karaoke typography. Every frame is a deterministic function of song time, so the live preview in the browser and the offline 1080p60 (or 4K60) export are identical.
+A code-rendered music video with karaoke typography synced to every sung character. Every frame is a deterministic function of song time, so the live preview in the browser and the offline 1080p60 (or 4K60) export are identical.
 
-This repository started as a copy of the code-rendered video for "I'm Upping My P(doom)" and is being reworked for another song, 下课再见. What works for the new song: the timing data (every sung character, the beat grid, the sections), the `intro` and `verse1` scenes (a cartoon classroom on a rainy afternoon) and `karaoke`, which shows the lyrics lit character by character in time with the voice for every section that has no scene of its own yet. The scenes of the original video are still in `app/src/scenes/` as reference; they look up that song's English lines and are not on the timeline. The look and the plan per section are in [`docs/TREATMENT.md`](docs/TREATMENT.md). The engine and scene API are documented in [`docs/ENGINE.md`](docs/ENGINE.md).
+The renderer started as a fork of the code-rendered video for "I'm Upping My P(doom)"; that song and its scenes are gone. What is in place for 《下课再见》: the song, its lyrics and the timing data (every sung character, the beat grid, the sections). The video itself is built part by part:
+
+- [`docs/TREATMENT.md`](docs/TREATMENT.md) — the story, the art style, the palette, the characters and how each part hands over to the next. The single source of truth for the look.
+- [`docs/PROMPTS.md`](docs/PROMPTS.md) — the prompts that build it: a foundation, then one part of the song per session.
+- [`docs/ENGINE.md`](docs/ENGINE.md) — the engine and the scene API.
+
+Until the parts have scenes, one scene (`karaoke`) shows the lyrics as plain type, lit character by character with the voice.
 
 ## Layout
 
@@ -12,8 +18,8 @@ This repository started as a copy of the code-rendered video for "I'm Upping My 
 - `data/lyrics.json` — the start and end of every sung character.
 - `data/audio.json` — tempo (140 BPM), beats, downbeats, sections, drum/vocal onsets and loudness envelopes.
 - `app/` — the renderer: TypeScript + three.js, bun + Vite.
-  - `src/engine/` — renderer core: timeline playback, post-processing (bloom, halation, grain), typography (Noto Sans SC for Chinese, Archivo, IBM Plex Mono, Cormorant Garamond, single-stroke plotter fonts), GPU line batches, HUD.
-  - `src/scenes/` — one module per scene. `intro`, `verse1` and `karaoke` are the ones in use; the files starting with `_` (other than `_motifs.ts`) hold what they share: palette, people, the classroom, the yard, captions.
+  - `src/engine/` — renderer core: timeline playback, post-processing (bloom, halation, grain), typography, GPU line batches, the HUD (hidden by default).
+  - `src/scenes/` — one module per scene.
   - `src/timeline.ts` — the edit: which scene plays when.
   - `scripts/render.ts` — offline renderer (headless Chrome → raw frames over WebSocket → ffmpeg).
 - `out/` — renders (not in the repo).
@@ -27,8 +33,10 @@ This repository started as a copy of the code-rendered video for "I'm Upping My 
 ```sh
 cd app
 bun install
-bunx vite
+bun x vite
 ```
+
+(`bun x`, not `bunx`: bun installed through winget on Windows has no `bunx` command.)
 
 Open http://localhost:5173 and use the keys below. `?t=23` starts at a given time.
 
@@ -47,19 +55,19 @@ The export is not real time and is heavier than the preview.
 
 ```sh
 cd app
-bun scripts/render.ts video --samples auto --shutter 0.2 --out ../out/video.mp4
+bun scripts/render.ts video --samples auto --shutter 0.2
 ```
 
-- **Output:** 1920×1080 at 60 fps, x264 CRF 16, AAC audio.
+- **Output:** `out/mv.mp4` (or `--out <file>`), 1920×1080 at 60 fps, x264 CRF 16, AAC audio.
 - **Motion blur:** every frame is the average of many sub-frames spread over a short shutter (`--shutter 0.2`, a fifth of the frame time), so fast motion leaves a continuous streak instead of a few stepped copies. `--samples auto` picks the count for each 32×32 tile of the frame: 12 where the image is still, 36 for ordinary camera motion, 108 or 324 for whips, slams and fast zooms. A tile stops once more sub-frames would no longer change it by more than `--tol` levels of 255 (default 3), and later sub-frames skip it, so a fast object over a still background costs little more than the object. `--refine frame` picks one count for the whole frame instead (slower, the sampler before tiles). `--samples N` takes a fixed N (`--samples 4` makes a quick draft; `--samples 1` is enough for the `karaoke` scene, where nothing moves fast). How it works: "Motion blur and sampling" in [`docs/ENGINE.md`](docs/ENGINE.md).
 - **Pipeline:** two headless Chromes (`--workers 2`) render chunks of 8 frames (`--chunk`) in turn and stream them to one ffmpeg, which gets them in order: the file is the same as from one renderer. One renderer already keeps the GPU busy in the heavy scenes; the second fills the gaps in the light ones. Frames that wait for the encoder are buffered in memory up to `--mem-gb` (default 1) and then on disk up to `--spool-gb` (default 20, in the system temp folder), so the renderers don't wait for x264 in the light scenes and x264 catches up in the heavy ones.
-- **Other modes:** `stills`, `sheet` (contact sheets, `--cuts` for every scene boundary), `perf`, and `plates` (regenerates `public/plates/`, the stills used by the outro's rewind montage; rerun it after changing a scene).
+- **Other modes:** `stills`, `sheet` (contact sheets, `--cuts` for every scene boundary) and `perf`.
 
 ### 4K
 
 ```sh
 cd app
-bun scripts/render.ts video --scale 2 --samples auto --shutter 0.2 --x264 aq-mode=3:rc-lookahead=30 --out ../out/video-4k.mp4
+bun scripts/render.ts video --scale 2 --samples auto --shutter 0.2 --x264 aq-mode=3:rc-lookahead=30 --out ../out/mv-4k.mp4
 ```
 
 - **Output:** a true 3840×2160 render (not an upscale): every layer, line and shader is rendered at the physical resolution. Scenes are laid out in 1920×1080 logical pixels, so the 4K frame looks like the 1080p one, only sharper.
@@ -90,7 +98,7 @@ The models download about 1.5 GB of weights into `analysis/.cache/`; delete that
 
 ## Credits
 
-- **Renderer:** the engine and the original scenes come from the code-rendered video for "I'm Upping My P(doom)", made with Claude in Claude Code.
+- **Renderer:** the engine comes from the code-rendered video for "I'm Upping My P(doom)", made with Claude in Claude Code.
 - **Fonts:** Noto Sans SC, Archivo, IBM Plex Mono and Cormorant Garamond (SIL Open Font License). Single-stroke EMS and Hershey fonts via the `hersheytext` package (OFL / public domain).
 
 ## License

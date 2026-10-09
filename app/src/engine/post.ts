@@ -23,22 +23,16 @@ export interface PostParams {
   ca: number; // chromatic aberration in px at the frame edge
   grain: number; // grain amplitude (sRGB units), ~0.04-0.1
   vignette: number; // 0..1
-  hud: number; // HUD opacity multiplier (crop marks, readout)
-  /** 0..1: the crop-mark frame (1 = in place, 0 = flown out past the edges). Only the bookends use it: the opening's sheet and the outro's regenerate/loop. */
+  hud: number; // HUD opacity (the crop marks): 0 = hidden, the default
+  /** 0..1: the crop-mark frame (1 = in place, 0 = flown out past the edges). Shows only with `hud` > 0. */
   frame: number;
-  /** Opacity of the corner P(doom) readout — 0 by default; P(doom) is staged inside plates. */
-  pdoom: number;
-  /** 0..1: the frame is light (bone paper) — the HUD switches captions and crop marks to ink. */
+  /** 0..1: the frame is light (paper) — the HUD draws its crop marks in ink. */
   paper: number;
   fade: number; // fade to black 0..1
   flash: number; // additive bone-white flash 0..1+
   shake: [number, number]; // frame offset in px
   zoom: number; // frame zoom (1 = none), for punch-ins on hits
   invert: number; // 0..1 invert (ink <-> bone), applied before grain
-  /** Replace the HUD P(doom) digits (e.g. 'NaN'). */
-  pdoomText?: string;
-  /** 0..1 glitch the HUD readout. */
-  hudCorruption?: number;
 }
 
 export const DEFAULT_POST: PostParams = {
@@ -51,9 +45,8 @@ export const DEFAULT_POST: PostParams = {
   ca: 1.2,
   grain: 0.055,
   vignette: 0.35,
-  hud: 1,
+  hud: 0,
   frame: 0,
-  pdoom: 0,
   paper: 0,
   fade: 0,
   flash: 0,

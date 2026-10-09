@@ -2,21 +2,23 @@
 
 The video is a web app (`app/`, TypeScript + three.js, run with bun + Vite) that renders any song time `t` deterministically at 1920×1080 (or at 2× that, 3840×2160, with `?scale=2`; see "Output scale" below). The same code drives the live preview and the offline 60 fps export.
 
+This file is about the engine. What the video looks like, and which part of the song each scene covers, is in [`TREATMENT.md`](TREATMENT.md).
+
 ## Running things
 
-- Dev server (probably already running): `cd app && bunx vite --port 5173`. Preview: http://localhost:5173/?t=23.0 (space = play/pause, ←/→ = ±1 s, shift = ±5 s, `,`/`.` = ±1 frame, `[`/`]` = previous/next timeline entry, `l` = loop the current entry, `h` = hide the UI).
-- Stills (the main way to check your work — then LOOK at the PNGs with the Read tool): `cd app && bun scripts/render.ts stills --t 12.5,13.0,14.2 --only open --out ../out/wip/open`
-- Contact sheet of a time range: `bun scripts/render.ts sheet --from 1.5 --to 9 --n 16 --cols 4 --only open --out ../out/wip/open/sheet.png`
-- Short video clip (to judge motion: extract frames with ffmpeg, or just trust the math): `bun scripts/render.ts video --from 20 --to 25 --only hook --out ../out/wip/hook.mp4 --preset veryfast`
-- `--only a,b` loads only those timeline entries (fast, and isolates you from other people's broken scenes). Without a matching entry nothing renders (black), so the entry must exist in `src/timeline.ts`.
-- Typecheck just your files: `bunx tsc --noEmit -p tsconfig.json 2>&1 | grep scenes/yourscene`.
+- Dev server: `cd app && bun x vite --port 5173` (`bun x`, not `bunx`: the winget install of bun on Windows has no `bunx` command). Preview: http://localhost:5173/?t=23.0 (space = play/pause, ←/→ = ±1 s, shift = ±5 s, `,`/`.` = ±1 frame, `[`/`]` = previous/next timeline entry, `l` = loop the current entry, `h` = hide the UI).
+- Stills (the main way to check your work — then LOOK at the PNGs with the Read tool): `cd app && bun scripts/render.ts stills --t 12.5,13.0,14.2 --only karaoke --out ../out/wip/karaoke`
+- Contact sheet of a time range: `bun scripts/render.ts sheet --from 1.5 --to 9 --n 16 --cols 4 --only karaoke --out ../out/wip/karaoke/sheet.png`
+- Short video clip (to judge motion: extract frames with ffmpeg, or just trust the math): `bun scripts/render.ts video --from 20 --to 25 --only karaoke --out ../out/wip/clip.mp4 --preset veryfast` (without `--out` a video goes to `out/mv.mp4`)
+- `--only a,b` loads only those timeline entries (fast, and a broken scene elsewhere can't get in the way). Without a matching entry nothing renders (black), so the entry must exist in `src/timeline.ts`.
+- Typecheck: `bun x tsc --noEmit -p tsconfig.json` (the render script: `-p tsconfig.scripts.json`).
 - The render script prints `SCENE ERRORS` and browser console errors — read them.
 - 4K: add `--scale 2` to any mode (`stills` then saves full-resolution 3840×2160 PNGs). Check your scene at both scales: downscaled, the 4K frame should look like the 1080p one, only sharper.
-- Renders while files are being edited: run a server without live reload (`PDOOM_NO_HMR=1 bunx vite --port 5190`) and pass `--url http://localhost:5190`; a live-reloading server reloads the page mid-render. The private server that `render.ts` starts when none is reachable already runs without it.
+- Renders while files are being edited: run a server without live reload (environment variable `MV_NO_HMR=1`; in PowerShell `$env:MV_NO_HMR = '1'; bun x vite --port 5190`) and pass `--url http://localhost:5190`; a live-reloading server reloads the page mid-render. The private server that `render.ts` starts when none is reachable already runs without it.
 
 ## Data
 
-- `lyrics` (`src/engine/lyrics.ts`): `lines[]` with `text,start,end,words[]`, each word `{w,start,end}` (word-level, aligned to the vocal). Find lines by content, never hard-code times: `const l = this.ctx.lyrics.get('sudden drop')` → `l.words[3].start`. Helpers: `Lyrics.wordProgress(word, t)` (0..1 sung progress), `Lyrics.lineCharProgress(line, t)` (chars sung so far — for per-glyph wipes), `lyrics.findWords('P(doom)')`.
+- `lyrics` (`src/engine/lyrics.ts`): `lines[]` with `text,start,end,words[]`. A "word" is one sung Chinese character, `{w,start,end,at}` (`at` = its offset in the line's text), aligned to the vocal. Find lines by content, never hard-code times: `const l = this.ctx.lyrics.get('教室钟慢半拍')` → `l.words[2].start`; a line that is sung more than once takes an index, `lyrics.get('等你下课一起走好不好', 1)` for the second chorus. Helpers: `Lyrics.wordProgress(word, t)` (0..1 sung progress), `Lyrics.lineCharProgress(line, t)` (chars sung so far — for per-glyph wipes), `lyrics.findWords('见')`, `lyrics.lineAt(t)`, `lyrics.linesIn(t0, t1)`.
 - `audio` (`src/engine/audio.ts`): `beats[]`, `downbeats[]`, `sections[]`, `beatAt(t)` (continuous beat index), `barAt(t)`, `timeOfBeat(i)`, `nearestBeat(t)`, `events('kick'|'snare'|'hat'|'vocal', t0, t1)`, `env(name, t)` for `rms|low|mid|high|vocal|drums|bass|other` (0..1), `hit(kind, t, halfLife)` decaying pulses.
 - Every `Frame` already carries `f.a` = `{rms,low,mid,high,vocal,drums,bass,other,kick,snare,hat,vonset}` and `f.beat,f.bar,f.beatPhase,f.barPhase`.
 
@@ -49,10 +51,10 @@ Rules:
 - **Deterministic**: output must be a pure function of `f.t` (and seeded randomness: `mulberry32(seed)`, `hash(...)`). Never use `Math.random()`, `Date.now()` or `performance.now()` for visuals. The export averages many sub-frames per frame, in any order (see "Motion blur and sampling"). If you need simulation state (particles, feedback buffers), set `stateful = true`, reset in `reset()`, integrate with `f.dt`, and the engine will fast-forward after seeks; such a scene can only be exported with a fixed `--samples`.
 - `render()` must fully overwrite `out` (a HalfFloat linear-HDR target). Colours are **linear**; values > ~0.85 bloom. Use palette constants (`C_INK`, `C_BONE`, `C_SIGNAL`… in GLSL; `LIN.signal` in TS for GL; `rgba('signal', a)` for Canvas2D).
 - `ctx.params` holds the timeline entry's params (one module can serve several entries); `ctx.start/ctx.end` its window; `f.lt`/`f.p` local time/progress.
-- Transitions: by default the engine crossfades overlapping entries. For custom transitions set `handlesTransition = true` and composite `f.under` (the previous scene's frame) yourself using `f.tin` (0→1 over the overlap). Most cuts should be hard cuts on downbeats (no overlap) — that's the default when windows touch.
-- Post overrides you can return: `exposure, bloom, bloomThreshold, bloomKnee, bloomRadius, halation, ca, grain, vignette, hud (HUD opacity), fade, flash, shake:[x,y], zoom, invert, pdoomText, hudCorruption`. Defaults in `src/engine/post.ts`.
+- Transitions: by default the engine crossfades overlapping entries. For custom transitions set `handlesTransition = true` and composite `f.under` (the previous scene's frame) yourself using `f.tin` (0→1 over the overlap). Entries whose windows touch without overlapping cut hard. How each part hands over to the next is agreed in `TREATMENT.md`.
+- Post overrides you can return: `exposure, bloom, bloomThreshold, bloomKnee, bloomRadius, halation, ca, grain, vignette, hud (HUD opacity, 0 by default), frame, paper, fade, flash, shake:[x,y], zoom, invert`. Defaults in `src/engine/post.ts`.
 - Performance: aim for < 25 ms/frame. Canvas2D layers cost ~2–4 ms to upload each; don't use more than 2–3 per scene. Precompute in `init()`.
-- Don't edit files outside your scene files (and your own helper files named `scenes/<name>-*.ts`). Engine changes: ask the lead (report in your final message what you'd need). Do not edit `src/timeline.ts`.
+- Keep a part's code in its scene file and its own helper files (`scenes/<name>-*.ts`). Code that several scenes share lives in `src/engine/` and in scene files whose name starts with `_`; change those, and `src/timeline.ts`, only when the part's prompt calls for it, and say so in your final message.
 
 ## Toolbox
 
@@ -68,7 +70,7 @@ Rules:
 - Lyrics come with typographic punctuation (`don’t`, `’cause`, `“Just`): `Word.w` and `Line.text` go through `smart()`; `lyrics.get()` matches straight or curly quotes. Hardcoded display strings use ’ “ ” … – — × − too. Mono text (IBM Plex Mono) is the UI/terminal voice and keeps typewriter quotes (`plain()` for a lyric shown as typed input).
 - No outlined or haloed type.
 - `util.ts`: `clamp, lerp, remap, smoothstep, ease.*, prog(x,a,b,ease), keys(t, [[t,v,ease],...]), springStep, pulse, mulberry32, hash, noise1/2/3, fbm1/2, polylineLengths, pointAtLength, window01`.
-- `hud.ts`: the global HUD (crop marks; optional captions from timeline entries, unused since revision 2; the bottom-left P(doom) readout is OFF unless a scene returns `post.pdoom > 0`). P(doom) is staged inside plates: `new PDoom(lyrics).value(t)`, `formatPDoom(v)`, and `drawReadout(ctx2d, x, y, v, {scale})` to draw the instrument anywhere. `PDoom.value(t)` is available as `engine.hud.pdoom` — if you need the value in a scene, recompute with `new PDoom(this.ctx.lyrics).value(t)`.
+- `hud.ts`: a global overlay over every scene. It only has crop marks and is hidden by default; a scene shows them by returning `hud: 1` and `frame: 0..1`.
 
 ## Output scale (4K)
 
@@ -96,18 +98,8 @@ What this asks of scenes:
 - Sub-frames are rendered out of time order and in any number: a scene's output must depend on `f.t` only. `stateful` scenes can't be sampled adaptively (the engine refuses); nothing may count `render()` calls.
 - Per-frame flicker and jitter keyed to 60 fps must use `frameIdx(t)` (`util.ts`), not `Math.floor(t * 60)`. `frameIdx` is constant over the frame's shutter; `floor` switches at the frame's own time and double-exposes two states in every frame.
 - Noise that changes with continuous `t` (a hash seeded by time) is resampled in every sub-frame: it averages out, but slowly, and makes the adaptive sampler work harder. Seed it with `frameIdx(t)` unless it is meant to smooth out.
-- A spark emitter whose rate varies over time passes the rate as a function of the birth time, with its maximum (`sparkParticles(..., { rate: (tb) => ..., rateMax })`). A rate read at the current `t` re-times every particle from one sub-frame to the next.
+- A particle emitter whose rate varies over time must take the rate as a function of each particle's birth time. A rate read at the current `t` re-times every particle from one sub-frame to the next.
 - Shaders that supersample internally (4 rotated-grid taps) take `ssTap: SS_TAP` and `${SS_TAP_GLSL}` and loop `for (int k = ssK0(); k < ssK1(); k++) ... rgss(k)`, weighting by `ssWeight()`. The engine then hands each sub-frame one tap, cycling them (every set is a multiple of 4), which averages to the same image for a quarter of the cost. In the preview and single-sample stills they take all four.
 - Post parameters (shake, flash, zoom, fades, the HUD mode) are read at one point of the shutter, 1/8 of it after the frame's time (where the video was tuned, and a point every sample set includes); the HUD, grain and dither are drawn once per frame.
-- Masked tiles keep what the last sub-frame drew there. That is safe for `out` and the engine's own targets. A scene's own target keeps being drawn in full (and costs full price) unless the scene lists it in `tileMasked`: only a target with a depth buffer whose texels are read back at their own screen position or within a few px of it (`margin: 1` widens the mask by a tile), like shoggoth's half-res G-buffer, or, with `moving: true`, one read through a zoom or pan that the scene gives before each sub-frame's draws with `ctx.mapTileMask(rt, map)`, like the room at the bottom of loom's dive (`null` while it is read through the spiral). A target read through a warp or a wide blur must not be listed.
+- Masked tiles keep what the last sub-frame drew there. That is safe for `out` and the engine's own targets. A scene's own target keeps being drawn in full (and costs full price) unless the scene lists it in `tileMasked`: only a target with a depth buffer whose texels are read back at their own screen position or within a few px of it (`margin: 1` widens the mask by a tile), such as a half-resolution buffer of the same view, or, with `moving: true`, one read through a zoom or pan that the scene gives before each sub-frame's draws with `ctx.mapTileMask(rt, map)` (`null` while it is read some other way). A target read through a warp or a wide blur must not be listed.
 - A draw into a masked target whose material asks for its own depth test (3D with a depth buffer) can't use the mask: the engine draws that sub-frame again unmasked and keeps drawing that scene unmasked.
-
-## Shared look (`app/src/scenes/_school.ts`)
-
-The scenes of 下课再见 are cartoon drawings on one `Layer2D`, composited with `comp.draw(renderer, layer.upload(), out, { mode: 'replace' })`. `_school.ts` has what they share: the palette (`C` outdoors, `ROOM` = the same colours in the dim room), `ink(c, fill, lineWidth)` (fill and outline the current path), `limb(c, points, width, fill)` (an outlined round-capped polyline: arms, legs, chair and desk legs), `joint()` (the elbow or knee of a two-segment limb), `rr`, `poly`, `rain(c, t, {...})`, `clock(c, x, y, r, h, m, s)` and `tickSeconds(beat, endBeat)`. The other shared modules are `_people.ts` (heads, walking figures), `_classroom.ts` (the room and the two students, posed through `Girl` and `Boy`), `_yard.ts` (the school outside) and `_caption.ts` (the sung line; `new Caption(lines)` in `init()`, `caption.draw(ctx2d, t)` last in `render()`). A scene anchors its timing to the lyrics: `verse1.ts` takes the lines inside its window and keys each shot and gesture to a line's or a character's start. The look is described in [`TREATMENT.md`](TREATMENT.md).
-
-The sections below about the palette constants (`C_INK`, `LIN.signal`…), the HUD and `_motifs.ts` describe the original video's scenes, which are kept as reference and are not on the timeline.
-
-## Shared motifs (`app/src/scenes/_motifs.ts`)
-
-Use these so recurring motifs look identical across plates: `sparkHead(lineBatch, x, y, t, scale, intensity)` + `sparkParticles(lineBatch, t, headAt, opts)` (the spark, drawn with a 2D additive `LineBatch`), `sparkHead2D` (Canvas2D fallback), and the mask: `drawMask2D(ctx, x, y, R, rot)`, `MASK` geometry constants and `GLSL_MASK` (`sdMaskInk(p)` in mask units, y down). Read-only for scene agents; ask the lead for changes.

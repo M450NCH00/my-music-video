@@ -16,7 +16,7 @@ canvas.height = PH;
 const engine = new Engine(canvas, makeTimeline);
 
 declare global {
-  interface Window { __pdoom: any }
+  interface Window { __mv: any }
 }
 
 let TIMELINE: typeof engine.timeline = [];
@@ -89,7 +89,7 @@ function sender(url: string, inflight: number): Promise<Sender> {
 
 function setupExport() {
   document.body.classList.add('export');
-  window.__pdoom = {
+  window.__mv = {
     engine,
     duration: engine.duration,
     errors: engine.errors,
@@ -143,7 +143,7 @@ function setupExport() {
       return used;
     },
   };
-  window.__pdoom.ready = true;
+  window.__mv.ready = true;
 }
 
 // ------------------------------------------------------------------ preview player
@@ -231,5 +231,5 @@ function setupPlayer() {
 boot().catch((e) => {
   console.error(e);
   document.body.insertAdjacentHTML('beforeend', `<pre style="color:#f55;position:fixed;top:0;left:0">${String(e?.stack ?? e)}</pre>`);
-  window.__pdoom = { error: String(e?.stack ?? e) };
+  window.__mv = { error: String(e?.stack ?? e) };
 });
