@@ -13,6 +13,15 @@ const scene = (name: string) => () => {
   return m ? m() : Promise.reject(new Error(`scene module not found: scenes/${name}.ts`));
 };
 
+/**
+ * `?scene=<name>`: one scene alone for the length of the song, off the timeline. `kit` is
+ * scenes/_kit-test.ts (the characters, particles and lyric styles of the shared kit).
+ */
+export function makeSolo(name: string) {
+  const file = [`_${name}-test`, `_${name}`, name].find((f) => modules[`./scenes/${f}.ts`]) ?? `_${name}-test`;
+  return (_ly: Lyrics, au: AudioData): TimelineEntry[] => [{ id: name, load: scene(file), start: 0, end: au.duration }];
+}
+
 export function makeTimeline(_ly: Lyrics, au: AudioData): TimelineEntry[] {
   const E = (id: string, file: string, start: number, end: number, extra: Partial<TimelineEntry> = {}): TimelineEntry =>
     ({ id, load: scene(file), start, end, ...extra });

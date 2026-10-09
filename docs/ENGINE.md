@@ -10,6 +10,7 @@ This file is about the engine. What the video looks like, and which part of the 
 - Stills (the main way to check your work — then LOOK at the PNGs with the Read tool): `cd app && bun scripts/render.ts stills --t 12.5,13.0,14.2 --only karaoke --out ../out/wip/karaoke`
 - Contact sheet of a time range: `bun scripts/render.ts sheet --from 1.5 --to 9 --n 16 --cols 4 --only karaoke --out ../out/wip/karaoke/sheet.png`
 - Short video clip (to judge motion: extract frames with ffmpeg, or just trust the math): `bun scripts/render.ts video --from 20 --to 25 --only karaoke --out ../out/wip/clip.mp4 --preset veryfast` (without `--out` a video goes to `out/mv.mp4`)
+- A test scene alone, off the timeline: `?scene=kit` in the preview, `--scene kit` in every mode of the render script (`scenes/_kit-test.ts`, the shared kit on screen: see "The love kit").
 - `--only a,b` loads only those timeline entries (fast, and a broken scene elsewhere can't get in the way). Without a matching entry nothing renders (black), so the entry must exist in `src/timeline.ts`.
 - Typecheck: `bun x tsc --noEmit -p tsconfig.json` (the render script: `-p tsconfig.scripts.json`).
 - The render script prints `SCENE ERRORS` and browser console errors — read them.
@@ -54,8 +55,48 @@ Rules:
 - `ctx.params` holds the timeline entry's params (one module can serve several entries); `ctx.start/ctx.end` its window; `f.lt`/`f.p` local time/progress.
 - Transitions: by default the engine crossfades overlapping entries. For custom transitions set `handlesTransition = true` and composite `f.under` (the previous scene's frame) yourself using `f.tin` (0→1 over the overlap). Entries whose windows touch without overlapping cut hard. How each part hands over to the next is agreed in `TREATMENT.md`.
 - Post overrides you can return: `exposure, bloom, bloomThreshold, bloomKnee, bloomRadius, halation, ca, grain, vignette, lift, hud (HUD opacity, 0 by default), frame, paper, fade, flash, shake:[x,y], zoom, invert`. The defaults in `src/engine/post.ts` are the treatment's soft look and rarely need overriding: `bloom 0.45` on values above white only (`bloomThreshold 1.05`), `halation 0.1` (peach), `ca 0`, `grain 0.022`, `vignette 0.18`, `lift 0.15` (blacks lifted to a warm brown). The treatment rules out camera shake, flash frames and visible chromatic aberration: leave `shake`, `flash` and `ca` alone. `fade` goes to (lifted) black; a fade to paper is something the scene draws.
-- Performance: aim for < 25 ms/frame. Canvas2D layers cost ~2–4 ms to upload each; don't use more than 2–3 per scene. Precompute in `init()`.
+- Performance: aim for < 25 ms/frame. Canvas2D layers cost ~2–4 ms to upload each; don't use more than 2–3 per scene (the kit's `Stage` is two). Precompute in `init()`.
 - Keep a part's code in its scene file and its own helper files (`scenes/<name>-*.ts`). Code that several scenes share lives in `src/engine/` and in scene files whose name starts with `_`; change those, and `src/timeline.ts`, only when the part's prompt calls for it, and say so in your final message.
+
+## The love kit (`src/scenes/_love.ts`)
+
+What every part draws with, so the parts look like one film: the two characters, their props, the air and the light, the lyric renderer, the stage and the transitions. Import it from `./_love` (its code is in `scenes/_love-*.ts`). **`?scene=kit`** shows all of it on eight pages of 8 s (`scenes/_kit-test.ts`: her poses, his poses, the design sheet, the two together, particles, lyric styles, light and depth, transitions); as stills: `bun scripts/render.ts stills --scene kit --t 4,12,20,28,36,44,52,60 --out ../out/wip/kit`. Everything in it is a pure function of the time you hand in (and a seed).
+
+```ts
+import { Stage, drawGirl, drawLyric, dustMotes, layer, lightShaft, type Cam, type Shaft } from './_love';
+
+export default class Verse1 extends Scene {
+  stage = new Stage(this.ctx);
+  override handlesTransition = true;                     // only if it comes in through stage.enter()
+  render(f: Frame, out: THREE.WebGLRenderTarget) {
+    const { c, g } = this.stage.begin();                 // c: the picture. g: the light (it blooms)
+    const cam: Cam = { x: 30 * Math.sin(f.t * 0.2), zoom: 1 + 0.03 * f.p };
+    layer(c, { cam, depth: 0 }, (c) => { /* the sky: paint the whole frame */ });
+    layer(c, { cam, depth: 0.3, blur: 3, haze: 0.4 }, (c) => { /* far buildings */ });
+    layer(c, { cam, depth: 1 }, (c) => {
+      drawGirl(c, 'walk', { x: 900, y: 960, facing: 'right', t: f.t, walk: f.beat, outfit: 'autumn', wind: 0.3, shadow: 1 });
+    });
+    const shaft: Shaft = { x: 1400, y: 0, angle: -0.6, length: 1100, width: 220 };
+    lightShaft(g, shaft, { alpha: 0.1, t: f.t });
+    dustMotes(g, f.t, { shafts: [shaft] });
+    drawLyric(c, this.ctx.lyrics.get('教室钟慢半拍'), f.t, { x: 960, y: 300, size: 84, style: 'chalk' });
+    this.stage.enter(f, out, { kind: 'iris', x: 960, y: 540 });   // or this.stage.end(out)
+  }
+}
+```
+
+- **Characters:** `drawGirl(ctx, pose, params)` and `drawBoy(ctx, pose, params)` draw her and him; `drawStudent(ctx, pose, { boy?, silhouette? })` a background student as one flat colour (put those on a `layer` with a little blur). Never draw the two any other way.
+  - `pose`: `'stand' | 'walk' | 'run' | 'sit-write' | 'chin-on-hand' | 'pack-bag' | 'turn-smile' | 'wave' | 'hold-phone' | 'hold-umbrella' | 'lean-closer' | 'face-each-other'`, or `{ from, to, k }` to ease from one pose into another (a head turn in three or four steps: ease `k`, `headTurn` and `smile` with `keys()`).
+  - `params`: `x, y` (the floor under the hips), `scale` (1 = about 615 px tall; he is 5% taller), `facing` (`'right' | 'left' | 'front' | 'back'` or degrees: 0 = toward the camera, 90 = right, 180 = away), `t` (breathing and sway), `wind` (-1..1: hair, skirt, ribbon, scarf), `outfit` (`'summer'`: short sleeves; `'autumn'`, the default: her cardigan; `'winter'`: her long coat, his jacket and the rose scarf), `scarf` (`false` on him while she keeps it, `true` on her), `blush` (0..1), `walk` (stride phase in cycles of two steps: pass `f.beat` for two steps a beat), `headTurn` / `nod` / `tilt` (degrees), `smile` (0..1; above 0.5 the eyes close into ◡), `k` (the pose's own amount, below), `bag` (the backpack; off by default when sitting or lying), `shadow` (0..1 on the floor), `light` (where the rim light comes from, or `null`), `silhouette`, `alpha`.
+  - `k` and `walk` by pose: `pack-bag` k 0..1 = the book going into the bag; `turn-smile` k 0..1 = how far he has turned (toward the camera's side, smiling as he does); `lean-closer` k -1..1 = how far it leans (+ = to its own left); `wave` uses `walk` as the swing of the hand; `hold-umbrella` and `lean-closer` walk if `walk` is given and stand otherwise.
+  - Every call returns the screen positions of `head, top, chin, neck, chest, hip, handL, handR, footL, footR, eyes` (with `eyesSeen`), `zip` (the pull of the bag's zipper pocket) and `pocket` (her coat pocket): hang props, sparkles and stars on those.
+  - A pose can be seen from any side: the figure is a jointed puppet that is projected for the way it faces. There is no camera height, so put rows of desks or people further back by drawing them higher and smaller yourself.
+- **Props:** `atDesk(ctx, params, () => drawGirl(ctx, 'sit-write', params))` draws a seated figure with its chair and desk in the right order (`drawDesk` / `drawChair` alone; the desk top is `DESK_TOP` units above the floor, in front of the figure); `drawPen(ctx, x, y)`, `drawPhone` + `phoneGlow` (on the light layer), `drawUmbrella(ctx, { x, y, scale, tilt })` at a hand (draw it after the people under it), `drawBag(ctx, { x, y, zip })` (a bag seen from its front: `zip` 0..1 opens the pocket; returns its `mouth` and `pull`), `drawStar(ctx, x, y, r, rot)` (the folded paper star).
+- **Depth:** `layer(ctx, { cam, depth, blur, haze, hazeColor, alpha }, draw)` is one parallax layer. `depth` 0 = infinitely far (it never moves), 1 = the subject, above 1 = close to the lens; `cam` = `{ x, y, zoom, roll }`, the slow camera of the shot; far layers get `haze` (lighter, less saturated) and a `blur` of 2 to 4, things passing close to the lens a blur of 6 to 12. Paint a shot far to near in 3 to 6 layers; don't call `layer` inside another layer's `draw`. `camera(ctx, cam, depth)` is the transform alone.
+- **Light** (on `g`, the light layer, unless noted): `glow(g, x, y, r)` for the sun, a lamp or a lit window; `lightShaft(ctx, shaft, { alpha })` on the picture (it tints what it crosses) and faintly on `g` (it glows); `lightLeak(g, amount, { from })`, 0..1, 1 = the frame is washed; `sparkle(g, x, y, r, k)`. `paperGrain(ctx, { x, y, w, h })` puts paper fibres on a sheet inside the picture (the whole frame already gets a paper texture from the stage); `dottedPath(ctx, points, k)` is the dotted-path motif.
+- **Particles** (each `(ctx, t, { x, y, w, h, count, seed, wind, alpha, size, color })`, the area defaulting to the frame): `dustMotes` (with `shafts` they only show in the light), `chalkDust` (drifting; or with `from` puffs leaving the chalk), `petals`, `leaves`, `paperScraps`, `snow`, `rain` (with `ground` each drop leaves a splash), `paperStars` (rising; or with `from`, `since`, `rate` leaving a point one by one). The defaults are sparse on purpose: they drift, they never swarm.
+- **Lyrics:** `drawLyric(ctx, line, t, { x, y, size, style, ... })` draws one line by the karaoke rule and returns its characters as drawn (`x, y, sung, since, …`, to hang dust or sparkles on the one being sung). `style`: `'plain'` (the characters change colour), `'hand'` (each is written in as it is sung), `'chalk'` (written in, in chalk: for the blackboard, settles to paper), `'grid'` (handwriting in composition-paper squares). Other options: `dark` (settle to paper), `rows: 2` (break at the line's space; a line wider than `maxWidth` breaks by itself), `align`, `angle`, `hold` / `until` (when it fades), `ghost` (opacity of unsung characters, 0 = they appear as sung), `path: (u, k, n) => ({ x, y, angle?, scale? })` (floating text along a path), `each: (ch) => { … }` (move or recolour single characters). Call it every frame the line may be on screen. The rule itself (0.4 s lead at 35%, rose from the character's own start, ink or paper after the line) is built in: don't reimplement it.
+- **Stage and transitions:** `new Stage(this.ctx)`, then each frame `const { c, g } = stage.begin()`, paint, and `stage.end(out)`: the picture goes over a paper texture and the light layer is added at 2.2 times its colours, so only what is painted on `g` blooms (`end(out, { light: 0 })` if nothing was). A scene that comes in from the one before sets `handlesTransition = true` and ends with `stage.enter(f, out, move)` instead: `{ kind: 'dissolve' }`, `{ kind: 'leak', from }` (light blooms in from a side, washes the frame, clears to the new picture) or `{ kind: 'iris', x, y, r?, soft?, close? }` (the new picture inside a circle: for match cuts on a round shape; give `r` each frame to drive it). `transition(ctx, move, texA, texB, out, k)` is the same between any two textures.
 
 ## Toolbox
 
@@ -76,7 +117,7 @@ Which font goes where, and the karaoke rule for lyrics, are in `TREATMENT.md` ("
 - **Which character is being sung:** a sung token (`Word`) is one Chinese character plus the punctuation attached to it (`“明`, `见”`). `line.chars[k]` is the k-th character of the text with its token (`.word`, or `null` for a space), so glyph k of the layout is sung when `t >= line.chars[k].word.start`; `Lyrics.wordProgress(word, t)` runs 0..1 through it, and `Lyrics.lineCharProgress(line, t)` gives the characters sung so far for a wipe across the line.
 - **Vertical placement:** place text by its baseline (`textBaseline = 'alphabetic'`). The ink of a Chinese character is centred about 0.36 of the font size above the baseline in both fonts (`CJK_MID`), reaching up to about 0.85 above and 0.15 below. To centre a character on (x, y), as in a grid square: `textAlign = 'center'` and `fillText(ch, x, y + CJK_MID * size)`. Don't use `textBaseline = 'middle'` for this: it sits 2 to 6% low, by a different amount in each font.
 - **Punctuation:** `Word.w` and `Line.text` go through `smart()`; `lyrics.get()` matches straight or curly quotes. Hardcoded display strings use ’ “ ” … — too.
-- `util.ts`: `clamp, lerp, remap, smoothstep, ease.*, prog(x,a,b,ease), keys(t, [[t,v,ease],...]), springStep, pulse, mulberry32, hash, noise1/2/3, fbm1/2, polylineLengths, pointAtLength, window01`.
+- `util.ts`: `clamp, lerp, remap, smoothstep, ease.*` (the treatment's `ease.inOutSine` and `ease.inOutCubic` among them), `prog(x,a,b,ease), keys(t, [[t,v,ease],...]), springStep, pulse, mulberry32, hash, noise1/2/3, fbm1/2, polylineLengths, pointAtLength, window01`.
 - `hud.ts`: a global overlay over every scene. It only has crop marks and is hidden by default; a scene shows them by returning `hud: 1` and `frame: 0..1`.
 
 ## Output scale (4K)

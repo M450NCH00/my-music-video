@@ -20,7 +20,7 @@ Until the parts have scenes, one scene (`karaoke`) shows the lyrics as plain typ
 - `app/` — the renderer: TypeScript + three.js, bun + Vite.
   - `src/engine/` — renderer core: timeline playback, the palette, post-processing (bloom on light sources, lifted blacks, fine grain, a gentle vignette), typography, GPU line batches, the HUD (hidden by default).
   - `public/fonts/` — the fonts: LXGW WenKai (霞鹜文楷) for the lyrics and Noto Sans SC for small text, both cut down to the characters the video shows, and the Latin fonts the engine came with.
-  - `src/scenes/` — one module per scene.
+  - `src/scenes/` — one module per scene. `_love.ts` is the kit they share (the two characters, props, particles, light, the lyric renderer, transitions); `_kit-test.ts` shows all of it at http://localhost:5173/?scene=kit.
   - `src/timeline.ts` — the edit: which scene plays when.
   - `scripts/render.ts` — offline renderer (headless Chrome → raw frames over WebSocket → ffmpeg).
 - `out/` — renders (not in the repo).
