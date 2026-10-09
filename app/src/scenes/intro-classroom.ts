@@ -14,26 +14,26 @@ import { penSpin } from './intro-desk';
 
 // ------------------------------------------------------------------ the room (in the figures' units: 615 = a standing figure)
 /** The vanishing point (px of the picture), the focal length, and the camera's height above the floor. */
-const VP: V2 = [800, 440], FOC = 1250, EYE = 560;
+export const VP: V2 = [800, 440], FOC = 1250, EYE = 560;
 /** The window wall (x of the right wall), the corridor wall, the front wall, the ceiling; how near the walls are painted. */
-const RIGHT = 700, LEFT = -2564, FAR = 3300, CEIL = 1267, NEAR = 520;
+export const RIGHT = 700, LEFT = -2564, FAR = 3300, CEIL = 1267, NEAR = 520;
 /** A point of the room on the picture: X to the right of the camera, Y above the floor, Z ahead. */
-const P3 = (X: number, Y: number, Z: number): V2 => [VP[0] + (FOC * X) / Z, VP[1] - (FOC * (Y - EYE)) / Z];
-const poly = (pts: V2[]) => { const p = new Path2D(); pts.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y))); p.closePath(); return p; };
+export const P3 = (X: number, Y: number, Z: number): V2 => [VP[0] + (FOC * X) / Z, VP[1] - (FOC * (Y - EYE)) / Z];
+export const poly = (pts: V2[]) => { const p = new Path2D(); pts.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y))); p.closePath(); return p; };
 /** A rectangle on the front wall (X0..X1, Y0..Y1) as [x, y, w, h] of the picture. */
-const onFront = (X0: number, Y0: number, X1: number, Y1: number): [number, number, number, number] => { const a = P3(X0, Y1, FAR), b = P3(X1, Y0, FAR); return [a[0], a[1], b[0] - a[0], b[1] - a[1]]; };
+export const onFront = (X0: number, Y0: number, X1: number, Y1: number): [number, number, number, number] => { const a = P3(X0, Y1, FAR), b = P3(X1, Y0, FAR); return [a[0], a[1], b[0] - a[0], b[1] - a[1]]; };
 
 /** The seats: columns (X, from the window) and rows (Z, from the back). She is at [0][0], he at column 0 of row 2. */
-const COLS = [480, 190, -100, -390, -680, -970, -1260, -1550], ROWS = [1000, 1430, 1860, 2290, 2720];
+export const COLS = [480, 190, -100, -390, -680, -970, -1260, -1550], ROWS = [1000, 1430, 1860, 2290, 2720];
 /** A seat on the picture: the floor under it, its scale, and how a figure facing the blackboard is turned to us there. */
-const seatAt = (X: number, Z: number) => ({ x: VP[0] + (FOC * X) / Z, y: VP[1] + (FOC * EYE) / Z, scale: FOC / Z, facing: 180 + (Math.atan2(X, Z) * 180) / Math.PI });
+export const seatAt = (X: number, Z: number) => ({ x: VP[0] + (FOC * X) / Z, y: VP[1] + (FOC * EYE) / Z, scale: FOC / Z, facing: 180 + (Math.atan2(X, Z) * 180) / Math.PI });
 /** Her seat and his. */
 export const HER = seatAt(COLS[0]!, ROWS[0]!), HIM = seatAt(COLS[0]!, ROWS[2]!);
 /** About where her right hand lies on her desk with the pen, and where her head is: for a camera that starts on one and rises to the other. */
 export const HER_HAND: V2 = [1490, 771], HER_HEAD: V2 = [1430, 635];
 
 /** The windows of the right wall (Z from, to), the sill and the head of each, and where the blinds of the nearest come down to. */
-const WINDOWS: [number, number][] = [[800, 1500], [1680, 2380], [2560, 3200]], SILL = 346, HEAD = 998, BLINDS = 620;
+export const WINDOWS: [number, number][] = [[800, 1500], [1680, 2380], [2560, 3200]], SILL = 346, HEAD = 998, BLINDS = 620;
 /** The way the sunlight travels (it comes in through the right wall, down and a little toward the front). */
 const SUN = [-1, -0.8, 0.15] as const;
 /** The sunbeam through a window: its patch on the floor, and a shaft from the middle of the window to the middle of the patch. */
@@ -44,13 +44,15 @@ function beam([Z0, Z1]: [number, number], Y0 = SILL, Y1 = HEAD): { win: V2[]; pa
   const a = mid(win), b = mid(patch), dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy), across = win.map((p) => (p[0] * dy - p[1] * dx) / len);
   return { win, patch, shaft: { x: a[0], y: a[1], angle: Math.atan2(dx, dy), length: len * 1.08, width: (Math.max(...across) - Math.min(...across)) * 0.86, spread: 1 } };
 }
-const BEAMS = [beam(WINDOWS[0]!, SILL, BLINDS), beam(WINDOWS[1]!), beam(WINDOWS[2]!)];
+export const BEAMS = [beam(WINDOWS[0]!, SILL, BLINDS), beam(WINDOWS[1]!), beam(WINDOWS[2]!)];
 
-const WALL = mix('paper', 'peach', 0.2), WALL_LOW = mix('paper', 'peach', 0.36);
-const DADO = mix('sky', 'paper', 0.4), DADO_LOW = mix(mix('sky', 'paper', 0.25), 'navy', 0.07);
-const SIDE = mix(mix('paper', 'peach', 0.4), 'ink', 0.09), SIDE_LOW = mix(mix('paper', 'peach', 0.55), 'ink', 0.2);
-const FLOOR = mix(mix('paper', 'peach', 0.42), 'ink', 0.06), FLOOR_LOW = mix(mix('paper', 'peach', 0.68), 'ink', 0.26);
-const BOARD = mix('navy', 'ink', 0.3), TRIM = mix('peach', 'ink', 0.35), AIR = mix('paper', 'peach', 0.35);
+export const WALL = mix('paper', 'peach', 0.2), WALL_LOW = mix('paper', 'peach', 0.36);
+export const DADO = mix('sky', 'paper', 0.4), DADO_LOW = mix(mix('sky', 'paper', 0.25), 'navy', 0.07);
+export const SIDE = mix(mix('paper', 'peach', 0.4), 'ink', 0.09), SIDE_LOW = mix(mix('paper', 'peach', 0.55), 'ink', 0.2);
+export const FLOOR = mix(mix('paper', 'peach', 0.42), 'ink', 0.06), FLOOR_LOW = mix(mix('paper', 'peach', 0.68), 'ink', 0.26);
+export const BOARD = mix('navy', 'ink', 0.3), TRIM = mix('peach', 'ink', 0.35), AIR = mix('paper', 'peach', 0.35);
+/** The blackboard on the front wall ([x, y, w, h] of the picture), and the clock above it: its centre and the radius of its rim. */
+export const BOARD_AT = onFront(-1815, 365, -49, 845), CLOCK_AT = P3(-932, 1020, FAR), CLOCK_R = 37;
 
 export interface RoomOpts {
   t: number; beat: number;
@@ -103,7 +105,7 @@ function curtain(c: Ctx, Z0: number, Z1: number, t: number, seed: number) {
 /** The blackboard on the front wall: its frame, what the eraser left, and three lots of chalk written one after the other. */
 function board(c: Ctx, shown: number, written: number) {
   if (shown <= 0.003) return;
-  const [x, y, w, h] = onFront(-1815, 365, -49, 845);
+  const [x, y, w, h] = BOARD_AT;
   c.save(); c.globalAlpha *= shown; c.translate(0, (1 - shown) * 12);
   c.fillStyle = TRIM; c.fillRect(x - 9, y - 9, w + 18, h + 18);
   const g = c.createLinearGradient(0, y, 0, y + h);
@@ -139,7 +141,8 @@ function board(c: Ctx, shown: number, written: number) {
   c.restore();
 }
 
-function shell(c: Ctx, o: RoomOpts, b: NonNullable<RoomOpts['build']>) {
+/** The room itself: walls, floor and ceiling, the windows and what is outside them, the blackboard and the clock. In the picture's own space. */
+export function shell(c: Ctx, o: Pick<RoomOpts, 't' | 'time' | 'sec'>, b: NonNullable<RoomOpts['build']>) {
   const t = o.t, grad = (x0: number, y0: number, x1: number, y1: number, a: string, z: string) => { const g = c.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, a); g.addColorStop(1, z); return g; };
   const far = (X: number, Y: number) => P3(X, Y, FAR), near = (X: number, Y: number) => P3(X, Y, NEAR);
   // ceiling, front wall with its painted dado, floor, the two side walls
@@ -165,7 +168,7 @@ function shell(c: Ctx, o: RoomOpts, b: NonNullable<RoomOpts['build']>) {
   c.restore();
   // the front wall: blackboard, the clock above it, a notice board, the teacher's desk
   board(c, b.board, b.chalk);
-  if (b.clock > 0.003) { const [cx, cy] = far(-932, 1020), k = b.clock; drawClock(c, cx, cy, 37 * (0.6 + 0.4 * k), { time: o.time, sec: o.sec, alpha: clamp(k * 1.6) }); }
+  if (b.clock > 0.003) { const [cx, cy] = CLOCK_AT, k = b.clock; drawClock(c, cx, cy, CLOCK_R * (0.6 + 0.4 * k), { time: o.time, sec: o.sec, alpha: clamp(k * 1.6) }); }
   {
     const [x, y, w, h] = onFront(120, 470, 560, 850);
     c.fillStyle = TRIM; c.fillRect(x - 5, y - 5, w + 10, h + 10);

@@ -4,7 +4,7 @@
 //   Transitions: a soft cross-dissolve, a light-leak dissolve, a circular iris (for match cuts).
 import * as THREE from 'three';
 import { FSPass, Layer2D, W, H, makeRT } from '../engine/gl';
-import { LIN, type PaletteKey } from '../engine/palette';
+import { LIN, mix, type PaletteKey } from '../engine/palette';
 import type { Frame, SceneCtx } from '../engine/scene';
 import { clamp, ease } from '../engine/util';
 import type { Ctx } from './_love-rig';
@@ -57,6 +57,13 @@ const passes = () => {
  * Its centre is where verse 1's clock face is; verse 1 starts on this circle and shrinks it onto the clock's rim.
  */
 export const INTRO_RING = { x: W / 2, y: H / 2, r: 1200 } as const;
+/**
+ * The handoff from verse 1 to chorus 1: the frame washed to warm light. Verse 1's last frame is one flat colour,
+ * `VERSE1_WASH.under`, and nothing on the light layer (light brighter than white would burn it out to plain
+ * white). The light that washed it there was `lightLeak(g, amount, VERSE1_WASH)`; chorus 1 starts on the flat
+ * colour and lets a leak of the same colours clear off its own picture.
+ */
+export const VERSE1_WASH = { color: 'gold', color2: 'peach', under: mix('paper', 'gold', 0.4) } as const;
 
 /** How one picture gives way to the next. */
 export type Move =
