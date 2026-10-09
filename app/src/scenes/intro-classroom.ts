@@ -239,12 +239,13 @@ function her(c: Ctx, o: RoomOpts): Anchors {
   drawDesk(c, p);
   // (her notebook, open on the desk)
   c.fillStyle = rgba('paper'); c.beginPath(); c.roundRect(p.x + 44 * s, p.y - 287 * s, 84 * s, 5 * s, 2 * s); c.fill();
-  const a = drawGirl(c, 'chin-on-hand', { ...p, t: o.t, headTurn: -62, tilt: -3, nod: -2, wind: -0.08 + 0.05 * Math.sin(o.t * 0.7), blush: 0.6, outfit: 'autumn', light: [0.85, -0.5] });
-  // the pen, turning flat above the desk (seen from here, an ellipse)
+  // the pen in her right hand, turning flat above the desk (seen from here, an ellipse). Her hand is on the far
+  // side of her from here, so the pen is painted before she is: she is in front of it
   const turnAt = 0.5 - penSpin(o.beat) * TAU;
-  c.save(); c.translate(a.handR[0] + 2 * s, a.handR[1] - 6 * s); c.scale(1, 0.42);
+  c.save(); c.translate(HER_HAND[0] + 2 * s, HER_HAND[1] - 6 * s); c.scale(1, 0.42);
   drawPen(c, -8 * 1.5 * s * Math.sin(turnAt), 8 * 1.5 * s * Math.cos(turnAt), 1.5 * s, turnAt);
   c.restore();
+  const a = drawGirl(c, 'chin-on-hand', { ...p, t: o.t, headTurn: -62, tilt: -3, nod: -2, wind: -0.08 + 0.05 * Math.sin(o.t * 0.7), blush: 0.6, outfit: 'autumn', light: [0.85, -0.5] });
   drawChair(c, p);
   return a;
 }

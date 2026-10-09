@@ -130,9 +130,27 @@ function notebook(c: Ctx, doodle: number) {
 }
 
 // ------------------------------------------------------------------ her hand and the pen
-/** Where the pen turns: on her thumb. Px of the picture. */
+/** Where she holds the pen (its middle, between spins): under the tip of her thumb. Px of the picture. */
 export const PEN_AT: V2 = [1090, 700];
 const PEN_REST = (120 * Math.PI) / 180;
+/** Her thumb, in the hand's space (the origin is PEN_AT): where it leaves the hand, its radius there and at its tip, and the way it points. */
+const THUMB: V2 = [165, 100], THUMB_R = 37, TIP_R = THUMB_R * 0.78;
+const ALONG: V2 = [-THUMB[0] / Math.hypot(THUMB[0], THUMB[1]), -THUMB[1] / Math.hypot(THUMB[0], THUMB[1])];
+/** How far the pen's middle is from the middle of the thumb's tip once it is clear of the thumb (the pen is 24 thick). */
+const CLEAR = TIP_R + 12 + 5;
+/**
+ * The pen at beat `beat`, in the hand's space: its middle, its angle, how far the thumb has drawn back (px), and
+ * whether it is clear of the thumb (`free`: only then is it painted over the thumb).
+ * Between spins it lies across her fingers, under the tip of her thumb. For a spin the thumb draws back and the pen
+ * comes out from under it, goes once round the tip of the thumb (over the thumb, on the far side), and is caught:
+ * the thumb comes down on it again. It only changes sides of the thumb while the two do not touch.
+ */
+function penPose(beat: number) {
+  const u = beat - Math.floor(beat), loose = u < 0.2 ? 1 - ease.inOutSine(clamp(u / 0.08)) : ease.inOutSine(clamp((u - 0.33) / 0.09));
+  const phi = -penSpin(beat) * TAU, back = 14 * loose, tip = 6 - back, d = lerp(-6, CLEAR, loose);
+  const ca = Math.cos(phi), sa = Math.sin(phi), rx = ALONG[0] * ca - ALONG[1] * sa, ry = ALONG[0] * sa + ALONG[1] * ca;
+  return { x: ALONG[0] * tip + rx * d, y: ALONG[1] * tip + ry * d, a: PEN_REST + phi, back, free: d > TIP_R + 12.5 };
+}
 
 /** A rounded limb from `a` (radius ra) to `b` (radius rb). */
 function capsule(p: Path2D, a: V2, b: V2, ra: number, rb: number) {
@@ -144,9 +162,9 @@ function capsule(p: Path2D, a: V2, b: V2, ra: number, rb: number) {
 }
 const turn = (p: V2, about: V2, a: number): V2 => { const ca = Math.cos(a), sa = Math.sin(a), x = p[0] - about[0], y = p[1] - about[1]; return [about[0] + x * ca - y * sa, about[1] + x * sa + y * ca]; };
 
-function drawPenBig(c: Ctx, angle: number, alpha = 1) {
+function drawPenBig(c: Ctx, x: number, y: number, angle: number, alpha = 1) {
   // (along +x: its point at 150, its end at -180)
-  c.save(); c.rotate(angle); c.globalAlpha *= alpha; c.lineCap = 'round';
+  c.save(); c.translate(x, y); c.rotate(angle); c.globalAlpha *= alpha; c.lineCap = 'round';
   const body = new Path2D(); body.roundRect(-180, -12, 292, 24, 11);
   const g = c.createLinearGradient(0, -12, 0, 12);
   g.addColorStop(0, mix(PEN, 'paper', 0.22)); g.addColorStop(0.45, PEN); g.addColorStop(1, mix(PEN, 'ink', 0.3));
@@ -161,7 +179,7 @@ function drawPenBig(c: Ctx, angle: number, alpha = 1) {
 }
 
 function hand(c: Ctx, t: number, beat: number) {
-  const n = Math.floor(beat), u = beat - n, spin = penSpin(beat), bump = (x: number) => Math.exp(-x * x * 4);
+  const n = Math.floor(beat), u = beat - n, bump = (x: number) => Math.exp(-x * x * 4);
   // the flick that starts each spin, the small give as the pen is caught, and (after a bad catch) the fumble
   const flick = bump((u - 0.44) / 0.09), caught = bump(u / 0.12), fumble = mod(n, 4) === 2 ? Math.exp(-5 * u) * Math.sin(u * TAU * 2.5) : 0;
   const O = PEN_AT, wrist: V2 = [392, 162];
@@ -207,14 +225,19 @@ function hand(c: Ctx, t: number, beat: number) {
   c.fillStyle = sg; c.fill(cuff);
   c.strokeStyle = rgba('ink', 0.14); c.lineWidth = 2.5;
   for (const k of [0.045, 0.075]) { c.beginPath(); c.moveTo(lerp(452, 1180, k), lerp(62, 608, k)); c.lineTo(lerp(310, 1040, k), lerp(252, 800, k)); c.stroke(); }
-  // the thumb, and the pen that turns on it: its shadow, a smear of where it has just been, then the pen
-  finger([165, 100], [-32, -18], 37, -0.02 * flick + 0.03 * caught);
-  const a = PEN_REST - spin * TAU, speed = (penSpin(beat) - penSpin(beat - 0.02)) / 0.02;
-  c.save(); c.translate(-9, 13); c.filter = 'blur(5px)'; c.globalAlpha = 0.22;
-  c.rotate(a); c.fillStyle = rgba('ink'); c.beginPath(); c.roundRect(-180, -11, 330, 22, 11); c.fill();
-  c.restore();
-  if (speed > 0.25) for (let i = 3; i >= 1; i--) drawPenBig(c, PEN_REST - penSpin(beat - i * 0.022) * TAU, 0.13 * clamp(speed / 2));
-  drawPenBig(c, a);
+  // the pen (its shadow, a smear of where it has just been, then the pen) and the thumb: the thumb over the pen
+  // while she holds it, the pen over the thumb while it is going round
+  const pen = penPose(beat), speed = (penSpin(beat) - penSpin(beat - 0.02)) / 0.02;
+  const thePen = () => {
+    c.save(); c.translate(pen.x - 9, pen.y + 13); c.filter = 'blur(5px)'; c.globalAlpha = 0.22;
+    c.rotate(pen.a); c.fillStyle = rgba('ink'); c.beginPath(); c.roundRect(-180, -11, 330, 22, 11); c.fill();
+    c.restore();
+    if (speed > 0.25) for (let i = 3; i >= 1; i--) { const was = penPose(beat - i * 0.022); drawPenBig(c, was.x, was.y, was.a, 0.13 * clamp(speed / 2)); }
+    drawPenBig(c, pen.x, pen.y, pen.a);
+  };
+  if (!pen.free) thePen();
+  finger([THUMB[0] - ALONG[0] * pen.back, THUMB[1] - ALONG[1] * pen.back], [ALONG[0] * (6 - pen.back), ALONG[1] * (6 - pen.back)], THUMB_R, 0);
+  if (pen.free) thePen();
   c.restore();
 }
 
