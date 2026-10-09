@@ -51,6 +51,13 @@ const passes = () => {
   return { paper: paperPass, move: movePass };
 };
 
+/**
+ * The handoff from the intro to verse 1: the bell's last sound ring, grown into a soft paper circle
+ * that covers the frame (`soundRing(c, x, y, r, { fill: 1 })`: the intro's last frame is all paper).
+ * Its centre is where verse 1's clock face is; verse 1 starts on this circle and shrinks it onto the clock's rim.
+ */
+export const INTRO_RING = { x: W / 2, y: H / 2, r: 1200 } as const;
+
 /** How one picture gives way to the next. */
 export type Move =
   /** A soft cross-dissolve. */

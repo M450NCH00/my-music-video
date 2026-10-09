@@ -143,6 +143,21 @@ export function sparkle(c: Ctx, x: number, y: number, r: number, k = 1, o: { col
   c.restore();
 }
 
+/**
+ * A sound ring of the bell (TREATMENT, motif 2): a soft paper-coloured circle of radius `r` round (x, y).
+ * `fill` 0..1 fills it as well: at 1 it is a soft disc, opaque out to `r` (the ring that ends the intro
+ * and becomes verse 1's clock face: INTRO_RING).
+ */
+export function soundRing(c: Ctx, x: number, y: number, r: number, o: { color?: string; alpha?: number; width?: number; fill?: number } = {}) {
+  const a = o.alpha ?? 1;
+  if (r <= 0 || a <= 0.003) return;
+  const col = o.color ?? 'paper', w = o.width ?? clamp(r * 0.08, 5, 90), fill = clamp(o.fill ?? 0), r0 = Math.max(0, r - w), r1 = r + w * 0.6;
+  const g = c.createRadialGradient(x, y, r0, x, y, r1), at = (rr: number) => clamp((rr - r0) / (r1 - r0));
+  g.addColorStop(0, rgba(col, a * fill)); g.addColorStop(at(r - w * 0.45), rgba(col, a * lerp(0.3, 1, fill)));
+  g.addColorStop(at(r), rgba(col, a * lerp(0.85, 1, fill))); g.addColorStop(at(r + w * 0.25), rgba(col, a * 0.3)); g.addColorStop(1, rgba(col, 0));
+  c.fillStyle = g; c.fillRect(x - r1, y - r1, r1 * 2, r1 * 2);
+}
+
 // ------------------------------------------------------------------ paper
 let grain: HTMLCanvasElement | null = null;
 function grainTile() {

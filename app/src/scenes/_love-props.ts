@@ -1,7 +1,8 @@
 // The few things the two of them sit at, carry and hold, drawn the same soft flat way as the
 // figures. Desk and chair live in a seated figure's own space (see _love-rig.ts), so they turn with it.
 import { mix, rgba } from '../engine/palette';
-import { clamp, lerp, TAU } from '../engine/util';
+import { F, font } from '../engine/type';
+import { clamp, ease, lerp, TAU } from '../engine/util';
 import { DESK_TOP, SEAT_TOP, bounds, circle, hull, mv, rotY, shape, yawOf, type CharParams, type Ctx, type V2, type V3 } from './_love-rig';
 
 const WOOD = mix(mix('paper', 'peach', 0.55), 'ink', 0.1), WOOD_LOW = mix(mix('paper', 'peach', 0.7), 'ink', 0.3);
@@ -115,6 +116,60 @@ export function drawUmbrella(c: Ctx, o: { x: number; y: number; scale?: number; 
   c.restore();
   const a = o.tilt ?? 0;
   return [o.x + Math.sin(a) * (top - rise), o.y - Math.cos(a) * (top - rise)];
+}
+
+/**
+ * Where the second hand of the classroom clock is, in seconds, at beat `beat`: it ticks once a beat,
+ * `late` beats after it (0.5: the clock that runs half a beat slow; 0: on the beat), with a small bounce.
+ */
+export function clockTick(beat: number, late = 0.5): number {
+  const b = beat - late, n = Math.floor(b);
+  return n - 1 + ease.outBack(clamp((b - n) / 0.16), 2.4);
+}
+/**
+ * The round classroom wall clock (TREATMENT, motif 1) centred on (x, y); `r` is the outside of its rim.
+ * `time`: the hour it shows (16.5 = half past four). `sec`: where its second hand is, in seconds: clockTick().
+ * A large clock (a close-up) also gets its numerals and minute marks.
+ */
+export function drawClock(c: Ctx, x: number, y: number, r: number, o: { time?: number; sec?: number; alpha?: number } = {}) {
+  const time = o.time ?? 16.5, face = r * 0.87, big = r >= 110;
+  const disc = (rr: number, style: string | CanvasGradient, dx = 0, dy = 0) => { c.fillStyle = style; c.beginPath(); c.arc(dx, dy, rr, 0, TAU); c.fill(); };
+  const grad = (rr: number, top: string, low: string) => { const g = c.createLinearGradient(0, -rr, 0, rr); g.addColorStop(0, top); g.addColorStop(1, low); return g; };
+  c.save(); c.translate(x, y);
+  if (o.alpha !== undefined) c.globalAlpha *= o.alpha;
+  // its shadow on the wall, the rim, the face (shaded a little under the rim)
+  disc(r * 1.02, rgba('ink', 0.14), -r * 0.05, r * 0.1);
+  disc(r, grad(r, mix('ink', 'peach', 0.45), mix('ink', 'peach', 0.12)));
+  disc(face, grad(face, mix('paper', 'ink', 0.1), mix('paper', 'peach', 0.2)));
+  disc(face * 0.97, grad(face, rgba('paper'), mix('paper', 'peach', 0.12)), 0, face * 0.03);
+  // the hours (and on a large clock the minutes and the numerals)
+  c.lineCap = 'round';
+  for (let i = 0; i < 60; i++) {
+    const hour = i % 5 === 0, quarter = i % 15 === 0;
+    if (!hour && !big) continue;
+    const a = (i / 60) * TAU, r1 = face * 0.92, r0 = face * (!hour ? 0.88 : big ? 0.85 : quarter ? 0.72 : 0.8);
+    c.strokeStyle = rgba('ink', hour ? 0.78 : 0.4); c.lineWidth = Math.max(1, r * (!hour ? 0.01 : quarter && !big ? 0.045 : 0.026));
+    c.beginPath(); c.moveTo(Math.sin(a) * r0, -Math.cos(a) * r0); c.lineTo(Math.sin(a) * r1, -Math.cos(a) * r1); c.stroke();
+  }
+  if (big) {
+    const size = face * 0.21;
+    c.font = font(F.hand(500), size); c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillStyle = rgba('ink', 0.86);
+    for (let n = 1; n <= 12; n++) { const a = (n / 12) * TAU; c.fillText(String(n), Math.sin(a) * face * 0.68, -Math.cos(a) * face * 0.68 + size * 0.34); }
+  }
+  // the hands: hour and minute in ink, the second hand in rose
+  const hand = (turn: number, len: number, w: number, col: string, tail = 0) => {
+    const a = turn * TAU;
+    c.strokeStyle = col; c.lineWidth = w;
+    c.beginPath(); c.moveTo(-Math.sin(a) * tail, Math.cos(a) * tail); c.lineTo(Math.sin(a) * len, -Math.cos(a) * len); c.stroke();
+  };
+  hand((time % 12) / 12, face * 0.48, Math.max(2, r * 0.07), rgba('ink'), face * 0.06);
+  hand(time % 1, face * 0.74, Math.max(1.6, r * 0.046), rgba('ink'), face * 0.08);
+  hand((o.sec ?? 0) / 60, face * 0.8, Math.max(1.2, r * 0.018), rgba('rose'), face * 0.2);
+  disc(Math.max(2, r * 0.06), rgba('ink')); disc(Math.max(1, r * 0.026), rgba('rose'));
+  // the glass: a soft highlight across the top left
+  c.strokeStyle = rgba('paper', 0.4); c.lineWidth = Math.max(1, r * 0.045);
+  c.beginPath(); c.arc(0, 0, face * 0.5, Math.PI * 1.08, Math.PI * 1.42); c.stroke();
+  c.restore();
 }
 
 /**
