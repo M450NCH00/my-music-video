@@ -145,7 +145,7 @@ ${SCALE === 1 ? `        c += texture(src, vUv + texel * vec2(-1, -1)).rgb; c +=
         col *= exposure;
         // HUD is composited in linear space before the shoulder so it gets grain & vignette too
         vec4 h = texture(hudTex, vUv);
-        col = mix(col, h.rgb / max(h.a, 1e-4), h.a * hud);
+        col = mix(col, toLinear(h.rgb) / max(h.a, 1e-4), h.a * hud);   // (a Layer2D: its texture holds sRGB values)
         col = shoulder(col);
         col = mix(col, vec3(0.8515) - col * 0.84, invert); // dark<->light in linear-ish space
         col += C_PAPER * flash;

@@ -105,11 +105,12 @@ export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply' | 'max' | 'repl
 export class Compositor {
   private passes = new Map<BlendMode, FSPass>();
   private frag = /* glsl */ `
-    uniform sampler2D tex; uniform float opacity; uniform vec3 tint; uniform vec4 uvXform; uniform bool premult;
+    uniform sampler2D tex; uniform float opacity; uniform vec3 tint; uniform vec4 uvXform; uniform bool premult; uniform bool decode;
     void main() {
       vec2 uv = (vUv - 0.5) * uvXform.xy + 0.5 + uvXform.zw;
       if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
       vec4 c = texture(tex, uv);
+      if (decode) c.rgb = toLinear(c.rgb);   // a Layer2D's texture holds sRGB values (see Layer2D)
       c.rgb *= tint;
       if (premult) c.rgb *= c.a;
       fragColor = vec4(c.rgb, c.a) * opacity;
@@ -117,7 +118,7 @@ export class Compositor {
   private get(mode: BlendMode) {
     let p = this.passes.get(mode);
     if (!p) {
-      const u = { tex: { value: null }, opacity: { value: 1 }, tint: { value: new THREE.Vector3(1, 1, 1) }, uvXform: { value: new THREE.Vector4(1, 1, 0, 0) }, premult: { value: true } };
+      const u = { tex: { value: null }, opacity: { value: 1 }, tint: { value: new THREE.Vector3(1, 1, 1) }, uvXform: { value: new THREE.Vector4(1, 1, 0, 0) }, premult: { value: true }, decode: { value: false } };
       p = new FSPass(this.frag, u, { blending: THREE.CustomBlending, transparent: true });
       const m = p.mat;
       m.blendEquation = THREE.AddEquation;
@@ -142,6 +143,7 @@ export class Compositor {
     (p.u.tint!.value as THREE.Vector3).set(...(o.tint ?? [1, 1, 1]));
     (p.u.uvXform!.value as THREE.Vector4).set(o.scale?.[0] ?? 1, o.scale?.[1] ?? 1, o.offset?.[0] ?? 0, o.offset?.[1] ?? 0);
     p.u.premult!.value = o.premult ?? o.mode !== 'multiply';
+    p.u.decode!.value = tex.userData?.srgb === true;
     p.render(renderer, target);
   }
 }
@@ -179,8 +181,12 @@ export function scaleContext2D(c: CanvasRenderingContext2D, s: number) {
 }
 
 /**
- * A 1920x1080 (logical) Canvas2D surface uploaded as an sRGB texture (decoded to linear when sampled).
- * Draw in CSS pixels with origin top-left. Call `upload()` after drawing each frame.
+ * A 1920x1080 (logical) Canvas2D surface uploaded as a texture. Draw in CSS pixels with origin top-left.
+ * Call `upload()` after drawing each frame.
+ * The texture holds the canvas's sRGB values as they are (`texture.userData.srgb`): the Compositor and the
+ * kit's Stage decode them, and a shader that samples it itself must too (`toLinear(c.rgb)`). It is not an
+ * sRGB-format texture because Chrome on Windows uploads a canvas into one through a slow path: about 45 ms
+ * for 1920x1080 on any GPU, against 1 ms for a plain one, and every frame uploads two or three of them.
  * The backing canvas is SCALE times larger (`canvas.width` = w*SCALE); the context is pre-scaled
  * (see scaleContext2D), so drawing code works in logical px at every output scale.
  */
@@ -195,7 +201,8 @@ export class Layer2D {
     this.canvas.height = Math.round(h * scale);
     this.ctx = scaleContext2D(this.canvas.getContext('2d')!, scale);
     this.texture = new THREE.CanvasTexture(this.canvas);
-    this.texture.colorSpace = THREE.SRGBColorSpace;
+    this.texture.colorSpace = THREE.NoColorSpace;
+    this.texture.userData.srgb = true;
     this.texture.minFilter = THREE.LinearFilter;
     this.texture.generateMipmaps = false;
     this.texture.flipY = true;

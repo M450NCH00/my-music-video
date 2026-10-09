@@ -16,7 +16,7 @@ const passes = () => {
     uniform sampler2D tex; uniform float amount;
     void main() {
       vec4 c = texture(tex, vUv);
-      vec3 col = mix(C_PAPER, c.rgb, c.a);
+      vec3 col = mix(C_PAPER, toLinear(c.rgb), c.a);   // (the layer's texture holds sRGB values)
       // (the tooth is plain per-pixel noise: noise on a fine lattice reads as a weave)
       float n = 0.55 * fbm(FRAG_PX * 0.011, 4) + 0.5 * (hash12(floor(FRAG_PX)) - 0.5) + 0.2 * snoise(vec2(FRAG_PX.x * 0.021 + FRAG_PX.y * 0.012, FRAG_PX.y * 0.16 - FRAG_PX.x * 0.03) + 31.0);
       fragColor = vec4(col * (1.0 + 0.016 * amount * n), 1.0);
