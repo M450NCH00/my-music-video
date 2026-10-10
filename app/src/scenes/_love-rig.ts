@@ -49,8 +49,8 @@ const BLUSH = mix('blush', 'rose', 0.4);
 // ------------------------------------------------------------------ poses
 export type PoseName =
   | 'stand' | 'walk' | 'run' | 'sit-write' | 'chin-on-hand' | 'pack-bag' | 'turn-smile' | 'wave'
-  | 'hold-phone' | 'hold-umbrella' | 'lean-closer' | 'face-each-other';
-export const POSES: PoseName[] = ['stand', 'walk', 'run', 'sit-write', 'chin-on-hand', 'pack-bag', 'turn-smile', 'wave', 'hold-phone', 'hold-umbrella', 'lean-closer', 'face-each-other'];
+  | 'hold-phone' | 'hold-umbrella' | 'lean-closer' | 'face-each-other' | 'point' | 'talk' | 'pocket';
+export const POSES: PoseName[] = ['stand', 'walk', 'run', 'sit-write', 'chin-on-hand', 'pack-bag', 'turn-smile', 'wave', 'hold-phone', 'hold-umbrella', 'lean-closer', 'face-each-other', 'point', 'talk', 'pocket'];
 /** A pose, or a blend of two (k = 0: `from`, k = 1: `to`) for easing from one into the other. */
 export type PoseArg = PoseName | { from: PoseName; to: PoseName; k: number };
 
@@ -189,6 +189,28 @@ const MAKE: Record<PoseName, (b: Build, q: Q) => Pose> = {
     p.lean = 0.04;
     return p;
   },
+  // the arm on the camera's side out at something in front of it and lower down (a pocket): k = 0 not yet .. 1 pointing
+  point: (b, q) => {
+    const p = base(b), u = q.k, sg = Math.sin(q.yaw) >= 0 ? -1 : 1, at: V3 = [sg * (b.sw + 2), SH - 125, 152];
+    if (sg > 0) { p.handL = mixv(p.handL, at, u); p.elbowL = [0.4, -1, -0.2]; } else { p.handR = mixv(p.handR, at, u); p.elbowR = [-0.4, -1, -0.2]; }
+    p.lean = 0.02 + 0.07 * u; p.head = [0, 0.03 + 0.2 * u, 0];
+    return p;
+  },
+  // talking with both hands: they go up and down in front of the chest by themselves (with t); legs walk if params.walk is set
+  talk: (b, q) => {
+    const p = q.walk >= 0 ? stride(b, q.walk, 58, 30, 6, 0) : base(b), a = q.t * 4.6;
+    p.handR = [-(b.sw + 24 + 10 * Math.sin(a * 0.5 + 1)), SH - 22 + 38 * Math.sin(a), 50];
+    p.handL = [b.sw + 26 + 10 * Math.sin(a * 0.5 + 2.4), SH - 44 + 34 * Math.sin(a + 2.2), 46];
+    p.elbowL = [0.8, -1, -0.2]; p.elbowR = [-0.8, -1, -0.2];
+    return p;
+  },
+  // the right hand at the coat pocket (the kit's pocket anchor), the eyes on it: k = 0 not yet .. 1 there
+  pocket: (b, q) => {
+    const p = base(b), u = q.k;
+    p.handR = mixv(p.handR, [-(b.sw + 1), HIP + 20, 13], u); p.elbowR = [-0.5, 0.1, -1];
+    p.head = [0, 0.03 + 0.25 * u, 0];
+    return p;
+  },
 };
 const POSE_KEYS = ['hip', 'head', 'handL', 'handR', 'elbowL', 'elbowR', 'footL', 'footR', 'kneeL', 'kneeR'] as const;
 function resolve(b: Build, arg: PoseArg, q: Q): Pose {
@@ -226,7 +248,9 @@ export function shape(pts: V2[]): Path2D {
   p.closePath();
   return p;
 }
-export const circle = (x: number, y: number, r: number, n = 12): V2[] => Array.from({ length: n }, (_, i) => [x + r * Math.cos((i / n) * TAU), y + r * Math.sin((i / n) * TAU)] as V2);
+/** How many times the usual number of facets round shapes get: more for a figure drawn very large (a close-up), set by figure(). */
+let fine = 1;
+export const circle = (x: number, y: number, r: number, n = 12): V2[] => { const m = Math.round(n * fine); return Array.from({ length: m }, (_, i) => [x + r * Math.cos((i / m) * TAU), y + r * Math.sin((i / m) * TAU)] as V2); };
 export const bounds = (pts: V2[]): [number, number] => [Math.min(...pts.map((p) => p[1])), Math.max(...pts.map((p) => p[1]))];
 
 /** Fills, lines and rim light for one figure; `flat` paints everything in one colour (a silhouette). */
@@ -319,7 +343,7 @@ function figure(c: Ctx, who: 'girl' | 'boy', poseArg: PoseArg, p: CharParams): A
   const b = who === 'girl' ? GIRL : BOY, girl = who === 'girl';
   const s = (p.scale ?? 1) * b.tall, t = p.t ?? 0, wind = p.wind ?? 0, outfit = p.outfit ?? 'autumn', A0 = p.alpha ?? 1;
   const name = typeof poseArg === 'string' ? poseArg : poseArg.k < 0.5 ? poseArg.from : poseArg.to;
-  const pose = resolve(b, poseArg, { walk: p.walk ?? (name === 'hold-umbrella' || name === 'lean-closer' ? -1 : 0), k: p.k ?? (name === 'lean-closer' ? 0 : 1), t, yaw: yawOf(p.facing) });
+  const pose = resolve(b, poseArg, { walk: p.walk ?? (name === 'hold-umbrella' || name === 'lean-closer' || name === 'talk' ? -1 : 0), k: p.k ?? (name === 'lean-closer' ? 0 : 1), t, yaw: yawOf(p.facing) });
   const down = name === 'sit-write' || name === 'chin-on-hand' || name === 'hold-phone';
   const V = rotY(yawOf(p.facing));
   const P = (v: V3): V3 => mv(V, v);
@@ -327,6 +351,9 @@ function figure(c: Ctx, who: 'girl' | 'boy', poseArg: PoseArg, p: CharParams): A
   const PS = (v: V3): V2 => S(P(v));
   const light = p.light === undefined ? ([-0.6, -0.8] as V2) : p.light;
   const br = new Brush(c, p.silhouette ?? null, light);
+  // (from about four times life size the facets of its round shapes would show: it gets more of them)
+  const zoom = c.getTransform();
+  fine = clamp((s * Math.hypot(zoom.a, zoom.b)) / 3.6, 1, 4);
   const gust = wind * (0.75 + 0.25 * Math.sin(t * 2.3 + (girl ? 0 : 1.7))) + 0.05 * Math.sin(t * 1.1 + (girl ? 0.4 : 2));
   const breath = (1.4 / s) * Math.sin(t * 1.7 + (girl ? 0 : 1.3));
 
@@ -353,7 +380,7 @@ function figure(c: Ctx, who: 'girl' | 'boy', poseArg: PoseArg, p: CharParams): A
   const smile = clamp((p.smile ?? 0) + pose.smile);
 
   // ---- parts of the picture
-  const ring = (c0: V3, A: V3, F: V3, w: number, d: number, n = 14): V2[] =>
+  const ring = (c0: V3, A: V3, F: V3, w: number, d: number, n = Math.round(14 * fine)): V2[] =>
     Array.from({ length: n }, (_, i) => PS(add(c0, add(mul(A, w * Math.cos((i / n) * TAU)), mul(F, d * Math.sin((i / n) * TAU))))));
   const tube = (a: V3, ra: number, z: V3, rz: number): V2[] => { const A = PS(a), Z = PS(z); return hull([...circle(A[0], A[1], ra * s), ...circle(Z[0], Z[1], rz * s)]); };
   const far = (v: V3) => P(v)[2] < -6;
@@ -599,11 +626,12 @@ function figure(c: Ctx, who: 'girl' | 'boy', poseArg: PoseArg, p: CharParams): A
   // the face: a rounded patch of the front of the skull; and what is bare under the hair, lower toward the nape
   const FA = girl ? 60 : 72, FC = girl ? -32 : -30, FB = girl ? 50 : 55, FN = 2.6;
   const inFace = (d: V3) => { const lon = Math.atan2(d[0], d[2]) / DEG, la = Math.asin(clamp(d[1], -1, 1)) / DEG; return Math.abs(lon / FA) ** FN + Math.abs((la - FC) / FB) ** FN < 1; };
-  const faceLoop = Array.from({ length: 64 }, (_, i) => { const th = (i / 64) * TAU, cx = Math.cos(th), sy = Math.sin(th); return dirOf(FA * Math.sign(cx) * Math.abs(cx) ** (2 / FN), FC + FB * Math.sign(sy) * Math.abs(sy) ** (2 / FN)); });
+  const NL = Math.round(64 * fine);
+  const faceLoop = Array.from({ length: NL }, (_, i) => { const th = (i / NL) * TAU, cx = Math.cos(th), sy = Math.sin(th); return dirOf(FA * Math.sign(cx) * Math.abs(cx) ** (2 / FN), FC + FB * Math.sign(sy) * Math.abs(sy) ** (2 / FN)); });
   const UA = dirOf(0, girl ? -60 : -62), UR = (girl ? 61 : 63) * DEG;
   const inUnder = (d: V3) => dot(d, UA) > Math.cos(UR);
   const u0 = norm(cross(UA, [1, 0, 0])), v0 = cross(UA, u0);
-  const underLoop = Array.from({ length: 64 }, (_, i) => { const f = (i / 64) * TAU; return add(mul(UA, Math.cos(UR)), add(mul(u0, Math.sin(UR) * Math.cos(f)), mul(v0, Math.sin(UR) * Math.sin(f)))); });
+  const underLoop = Array.from({ length: NL }, (_, i) => { const f = (i / NL) * TAU; return add(mul(UA, Math.cos(UR)), add(mul(u0, Math.sin(UR) * Math.cos(f)), mul(v0, Math.sin(UR) * Math.sin(f)))); });
   /** A lock of hair between two points of the hairline and a tip, by direction; drawn if its tip faces us. */
   const lock = (lon0: number, lon1: number, top: number, tipLon: number, tipLa: number, r = 1.02) => {
     const a = on(lon0, top, r), z = on(lon1, top, r), tip = on(tipLon, tipLa, r);
@@ -744,6 +772,7 @@ function figure(c: Ctx, who: 'girl' | 'boy', poseArg: PoseArg, p: CharParams): A
   if (p.alpha !== undefined) c.restore();
 
   const [A8, F8] = axes(8);
+  fine = 1;
   return {
     head: C, top: [hairC[0], hairC[1] - hairR], chin: scr(mv(H, [0, -1.08, 0.13])), neck: PS(spine(NECK)), chest: PS(spine(130)), hip: PS(hip),
     handL: PS(add(haL, mul(norm(sub(haL, elL)), 7))), handR: PS(add(haR, mul(norm(sub(haR, elR)), 7))), footL: PS(anL), footR: PS(anR),

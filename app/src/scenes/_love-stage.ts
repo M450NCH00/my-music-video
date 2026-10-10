@@ -73,6 +73,19 @@ export const VERSE1_WASH = { color: 'gold', color2: 'peach', under: mix('paper',
  * cross as its corridor window, and lets the frost go back from there.
  */
 export const CHORUS1_FROST = { x: -96, y: -54, w: W + 192, h: H + 108, bar: 40, seed: 7, trim: mix('paper', 'peach', 0.1) } as const;
+/**
+ * The handoff from verse 2 to chorus 2: the sparkles in his eyes have left them, drifted apart, and are the lamps of
+ * an evening street. Verse 2's last frame is the sky of the blue hour and four lamps alight in it, nothing else: the
+ * frame filled from its top to its foot with `sky` (a linear gradient, stops at 0, 0.55 and 1), and for each lamp of
+ * `at` its soft light on the picture, `glow(c, x, y, halo, { alpha: soft })`, and its bright heart on the light layer,
+ * `glow(g, x, y, heart)` (the light layer added at 2.2, as everywhere). Chorus 2 starts on the same sky and the same
+ * four lights, and puts its street under them.
+ */
+export const VERSE2_LAMPS = {
+  sky: [mix('navy', 'dusk', 0.4), mix('dusk', 'navy', 0.25), mix('dusk', 'blush', 0.4)],
+  at: [[300, 330], [740, 330], [1180, 330], [1620, 330]],
+  halo: 330, soft: 0.5, heart: 96,
+} as const;
 
 /** How one picture gives way to the next. */
 export type Move =

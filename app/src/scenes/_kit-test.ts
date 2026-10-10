@@ -93,6 +93,9 @@ export default class KitTest extends Scene {
       }
       case 'lean-closer': p.facing ??= 20; p.k = Math.sin(t * 1.2); draw(c, pose, p); break;
       case 'face-each-other': p.facing ??= 90; draw(c, pose, p); break;
+      case 'point': p.facing ??= 90; p.k = 0.5 - 0.5 * Math.cos(t * 1.2); draw(c, pose, p); break;
+      case 'talk': p.facing ??= 25; draw(c, pose, p); break;
+      case 'pocket': p.facing ??= 50; p.k = 0.5 - 0.5 * Math.cos(t * 1.2); draw(c, pose, p); break;
       case 'stand': p.facing ??= 30; draw(c, pose, p); break;
       default: p.facing ??= 90; draw(c, pose, p);
     }
@@ -103,9 +106,9 @@ export default class KitTest extends Scene {
     const outfit = (['summer', 'autumn', 'winter'] as const)[Math.min(2, Math.floor(((f.t % PAGE) / PAGE) * 3))]!;
     this.label(c, `${boy ? 'HIM' : 'HER'}: every pose (${outfit})`, W / 2, 52, 26);
     POSES.forEach((pose, i) => {
-      const col = i % 6, row = Math.floor(i / 6), x = 160 + col * 320, y = 500 + row * 500;
-      this.posed(c, f, boy, pose, pose === 'hold-phone' ? x - 80 : pose === 'sit-write' || pose === 'chin-on-hand' || pose === 'pack-bag' ? x - 50 : x, y, 0.56, { outfit });
-      this.label(c, pose, x, y + 44);
+      const col = i % 5, row = Math.floor(i / 5), x = 200 + col * 380, y = 366 + row * 328;
+      this.posed(c, f, boy, pose, pose === 'hold-phone' ? x - 60 : pose === 'sit-write' || pose === 'chin-on-hand' || pose === 'pack-bag' ? x - 40 : x, y, 0.4, { outfit });
+      this.label(c, pose, x, y + 36);
     });
   }
 

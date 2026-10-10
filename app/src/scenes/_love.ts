@@ -17,5 +17,5 @@ export { camera, chalkDust, dottedPath, dustMotes, frost, glow, inShaft, layer, 
 export type { Cam, Drift, LayerOpts, Shaft } from './_love-fx';
 export { LYRIC_GHOST, LYRIC_LEAD, drawLyric } from './_love-lyrics';
 export type { LyricChar, LyricOpts, LyricStyle } from './_love-lyrics';
-export { CHORUS1_FROST, INTRO_RING, VERSE1_WASH, Stage, transition } from './_love-stage';
+export { CHORUS1_FROST, INTRO_RING, VERSE1_WASH, VERSE2_LAMPS, Stage, transition } from './_love-stage';
 export type { Move } from './_love-stage';
