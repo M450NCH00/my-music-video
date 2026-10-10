@@ -64,6 +64,15 @@ export const INTRO_RING = { x: W / 2, y: H / 2, r: 1200 } as const;
  * colour and lets a leak of the same colours clear off its own picture.
  */
 export const VERSE1_WASH = { color: 'gold', color2: 'peach', under: mix('paper', 'gold', 0.4) } as const;
+/**
+ * The handoff from chorus 1 to verse 2: her bedroom window frosted over, so close that its glass covers the frame.
+ * `x, y, w, h` is the glass on screen (larger than the frame: the window's own frame is outside it). Chorus 1's
+ * last frame is `frost(c, CHORUS1_FROST, 1, CHORUS1_FROST)` (the kit's frost, closed: nothing shows through), and
+ * over it the cross of the window's bars: one upright and one level, `bar` px wide, in the flat colour `trim`,
+ * through the middle of the glass. Nothing is on the light layer. Verse 2 starts on the same glass and the same
+ * cross as its corridor window, and lets the frost go back from there.
+ */
+export const CHORUS1_FROST = { x: -96, y: -54, w: W + 192, h: H + 108, bar: 40, seed: 7, trim: mix('paper', 'peach', 0.1) } as const;
 
 /** How one picture gives way to the next. */
 export type Move =

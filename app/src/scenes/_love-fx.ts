@@ -389,3 +389,91 @@ export function paperStars(c: Ctx, t: number, o: Drift & { from?: V2; since?: nu
     drawStar(c, x, y, lerp(9, 17, r(4)) * k * ease.outBack(clamp(age / 0.45)), ph + 0.6 * Math.sin(age * 0.8 + ph), { color: o.color, alpha: A * clamp(age * 5) });
   }
 }
+
+// ------------------------------------------------------------------ frost
+/**
+ * A fern of ice: where it is rooted in the pane (0..1), how far its stem turns off the way to the middle and how it
+ * bends, how long it gets, when it starts, and how long each pair of its barbs is.
+ */
+interface Fern { x: number; y: number; turn: number; bend: number; len: number; born: number; barbs: number[] }
+/** The ferns are painted for a pane of this size (the frame and a tenth: CHORUS1_FROST); they take this share of the frost's coming to grow. */
+const FERNS_W = W * 1.1, FERNS_H = H * 1.1, GROW = 0.42;
+const fernsOf = new Map<number, { list: Fern[]; cv: HTMLCanvasElement }>();
+let grown: { cv: HTMLCanvasElement; c: Ctx } | null = null;
+/** The ferns of a seed, and all of them full grown on a canvas of their own: painted once, and kept. */
+function ferns(seed: number) {
+  let f = fernsOf.get(seed);
+  if (f) return f;
+  const rnd = mulberry32(seed * 7919 + 13), list: Fern[] = [], cv = document.createElement('canvas'), w = FERNS_W, h = FERNS_H, m = h;
+  for (let i = 0; i < 46; i++) {
+    // most are rooted on the edge of the pane, the ones in the corners first; a few start out in the glass, late
+    const edge = i < 36, u = rnd(), side = Math.floor(rnd() * 4), x = !edge ? 0.12 + 0.76 * rnd() : side === 1 ? 1 : side === 3 ? 0 : u, y = !edge ? 0.12 + 0.76 * rnd() : side === 0 ? 0 : side === 2 ? 1 : u;
+    const len = edge ? 0.34 + 0.44 * rnd() : 0.16 + 0.2 * rnd();
+    list.push({
+      x, y, len, turn: (rnd() - 0.5) * (edge ? 1.2 : TAU), bend: (rnd() - 0.5) * 0.5,
+      born: edge ? 0.42 * (1 - Math.hypot(x - 0.5, y - 0.5) / Math.SQRT1_2) + 0.1 * rnd() : 0.38 + 0.18 * rnd(),
+      barbs: Array.from({ length: Math.round(len / 0.034) }, () => 0.55 + 0.45 * rnd()),
+    });
+  }
+  // each: a stem toward the middle of the pane, bending a little, with barbs to either side that get shorter toward
+  // its tip, and a smaller pair on each of those
+  const p = new Path2D(), line = (ax: number, ay: number, dir: number, l: number) => { p.moveTo(ax, ay); p.lineTo(ax + Math.cos(dir) * l, ay + Math.sin(dir) * l); };
+  for (const fn of list) {
+    const a = Math.atan2((0.5 - fn.y) * h, (0.5 - fn.x) * w) + fn.turn, L = fn.len * m, n = fn.barbs.length, ca = Math.cos(a), sa = Math.sin(a);
+    const at = (u: number): V2 => [fn.x * w + ca * u * L - sa * fn.bend * L * u * u, fn.y * h + sa * u * L + ca * fn.bend * L * u * u];
+    p.moveTo(...at(0));
+    for (let i = 1; i <= 8; i++) p.lineTo(...at(i / 8));
+    for (let j = 0; j < n; j++) {
+      const u = (j + 0.6) / (n + 0.4), l = 0.27 * L * (1 - u) ** 0.8 * fn.barbs[j]!, [bx, by] = at(u), dir = a + Math.atan(2 * fn.bend * u);
+      for (const sg of [-1, 1]) {
+        const d = dir + sg * 1.02, mx = bx + Math.cos(d) * l * 0.5, my = by + Math.sin(d) * l * 0.5;
+        line(bx, by, d, l);
+        if (l > 0.02 * m) { line(mx, my, d + 1.02, l * 0.3); line(mx, my, d - 1.02, l * 0.3); }
+      }
+    }
+  }
+  cv.width = Math.round(w * SCALE); cv.height = Math.round(h * SCALE);
+  const c = scaleContext2D(cv.getContext('2d')!, SCALE);
+  c.lineCap = 'round'; c.lineJoin = 'round'; c.lineWidth = m * 0.004;
+  c.save(); c.translate(m * 0.003, m * 0.0045); c.strokeStyle = mix('frost', 'navy', 0.2, 0.45); c.stroke(p); c.restore();
+  c.strokeStyle = rgba('paper', 0.95); c.stroke(p);
+  fernsOf.set(seed, (f = { list, cv }));
+  return f;
+}
+/**
+ * Frost on a pane of glass (the rectangle `r`), `k` (0..1) of the way over it: ice closes in from the edges on the
+ * middle of the pane, and ferns of it grow ahead. At 1 nothing shows through: the pane is one pale sheet with the
+ * ferns on it. The same seed is the same frost at any size (the handoff from chorus 1 to verse 2: CHORUS1_FROST).
+ */
+export function frost(c: Ctx, r: { x: number; y: number; w: number; h: number }, k: number, o: { seed?: number } = {}) {
+  k = clamp(k);
+  if (k <= 0.002) return;
+  const { x, y, w, h } = r, front = 1.15 - 1.5 * k, ice = mix('frost', 'paper', 0.5), f = ferns(o.seed ?? 1);
+  c.save(); c.beginPath(); c.rect(x, y, w, h); c.clip();
+  // the sheet of ice: clear inside `front` (a radius: 1 = the corners), closed outside it; whiter toward the top
+  c.save(); c.translate(x + w / 2, y + h / 2); c.scale(w / Math.SQRT2, h / Math.SQRT2);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, 1.05), up = c.createLinearGradient(0, -0.71, 0, 0.71);
+  for (let i = 0; i <= 7; i++) g.addColorStop(i / 7, rgba(ice, smoothstep(front - 0.32, front + 0.05, (i / 7) * 1.05)));
+  c.fillStyle = g; c.fillRect(-0.72, -0.72, 1.44, 1.44);
+  up.addColorStop(0, rgba('paper', 0.3 * k)); up.addColorStop(1, rgba('paper', 0));
+  c.fillStyle = up; c.fillRect(-0.72, -0.72, 1.44, 1.44);
+  c.restore();
+  // the ferns: of each, as much as has grown yet (what lies within its reach from its root)
+  c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  if (k >= 1) c.drawImage(f.cv, x, y, w, h);
+  else {
+    if (!grown) { const cv = document.createElement('canvas'); cv.width = f.cv.width; cv.height = f.cv.height; grown = { cv, c: scaleContext2D(cv.getContext('2d')!, SCALE) }; }
+    const s = grown.c;
+    s.globalCompositeOperation = 'source-over'; s.clearRect(0, 0, FERNS_W, FERNS_H);
+    for (const fn of f.list) {
+      const reach = clamp((k - fn.born) / GROW) * fn.len * FERNS_H * 1.15, fx = fn.x * FERNS_W, fy = fn.y * FERNS_H;
+      if (reach <= 0) continue;
+      const m = s.createRadialGradient(fx, fy, reach * 0.5, fx, fy, reach);
+      m.addColorStop(0, rgba('paper')); m.addColorStop(1, rgba('paper', 0));
+      s.fillStyle = m; s.fillRect(fx - reach, fy - reach, reach * 2, reach * 2);
+    }
+    s.globalCompositeOperation = 'source-in'; s.drawImage(f.cv, 0, 0, FERNS_W, FERNS_H);
+    c.drawImage(grown.cv, x, y, w, h);
+  }
+  c.restore();
+}
