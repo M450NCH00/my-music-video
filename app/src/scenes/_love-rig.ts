@@ -641,21 +641,23 @@ function figure(c: Ctx, who: 'girl' | 'boy', poseArg: PoseArg, p: CharParams): A
     br.fill(skin, SKIN, SKIN_LOW, C[1] - R * s, jaw[1] + jawR + 14 * s);
     // the face: only what is turned toward us
     if (!br.plain) {
-      const bl = clamp(p.blush ?? 0.5);
+      // (the features lean with the head: `lean` is how far the head's own "up" is turned on screen, and
+      // (ux, uy) that direction, so that a bowed or tilted head has its eyes, cheeks and mouth bowed or tilted too)
+      const bl = clamp(p.blush ?? 0.5), top = mv(H, [0, 1, 0]), lean = Math.atan2(top[0], top[1]), ux = Math.sin(lean), uy = -Math.cos(lean);
       for (const sg of [1, -1]) {
         const k = on(sg * 37, -31);
-        if (k.z > 0.1 && bl > 0.01) { c.fillStyle = BLUSH; c.globalAlpha = A0 * 0.62 * bl * clamp(k.z * 2); c.beginPath(); c.ellipse(k.q[0], k.q[1], 10 * s * clamp(k.z + 0.25), 5.8 * s, 0, 0, TAU); c.fill(); c.globalAlpha = A0; }
+        if (k.z > 0.1 && bl > 0.01) { c.fillStyle = BLUSH; c.globalAlpha = A0 * 0.62 * bl * clamp(k.z * 2); c.beginPath(); c.ellipse(k.q[0], k.q[1], 10 * s * clamp(k.z + 0.25), 5.8 * s, lean, 0, TAU); c.fill(); c.globalAlpha = A0; }
         const e = on(sg * 21, -13);
         if (e.z > 0.16) {
           c.strokeStyle = rgba('ink', 0.92); c.fillStyle = rgba('ink', 0.94); c.lineWidth = clamp(2.2 * s, 1.5, 3); c.lineCap = 'round';
-          if (smile > 0.5) { c.beginPath(); c.ellipse(e.q[0], e.q[1] - 2.5 * s, 5.6 * s * clamp(e.z + 0.2), 4.8 * s, 0, 0.12 * Math.PI, 0.88 * Math.PI); c.stroke(); }
-          else { c.beginPath(); c.ellipse(e.q[0], e.q[1], 3.4 * s * clamp(e.z + 0.25), 4.5 * s, 0, 0, TAU); c.fill(); }
+          if (smile > 0.5) { c.beginPath(); c.ellipse(e.q[0] + ux * 2.5 * s, e.q[1] + uy * 2.5 * s, 5.6 * s * clamp(e.z + 0.2), 4.8 * s, lean, 0.12 * Math.PI, 0.88 * Math.PI); c.stroke(); }
+          else { c.beginPath(); c.ellipse(e.q[0], e.q[1], 3.4 * s * clamp(e.z + 0.25), 4.5 * s, lean, 0, TAU); c.fill(); }
         }
       }
       const m = on(0, -47);
       if (m.z > 0.3 && smile > 0.15) {
         c.strokeStyle = rgba('ink', 0.6 * clamp(smile * 1.4)); c.lineWidth = clamp(1.9 * s, 1.5, 2.6); c.lineCap = 'round';
-        c.beginPath(); c.ellipse(m.q[0], m.q[1] - 3 * s, 5.5 * s * clamp(m.z), 4 * s, 0, 0.2 * Math.PI, 0.8 * Math.PI); c.stroke();
+        c.beginPath(); c.ellipse(m.q[0] + ux * 3 * s, m.q[1] + uy * 3 * s, 5.5 * s * clamp(m.z), 4 * s, lean, 0.2 * Math.PI, 0.8 * Math.PI); c.stroke();
       }
     }
     // the hair over it: all of the head's outline but the face and what is bare under the hairline
@@ -721,7 +723,9 @@ function figure(c: Ctx, who: 'girl' | 'boy', poseArg: PoseArg, p: CharParams): A
   if (p.alpha !== undefined) { c.save(); c.globalAlpha = p.alpha; }
   const wears = p.bag ?? !down;
   const bagZ = P(add(spine(110), mul(axes(110)[1], -40)))[2];
-  const armZ = (el: V3, k: string) => (pose.over.includes(k) ? torsoZ + 400 : P(el)[2] < -6 ? P(el)[2] - 100 : P(el)[2] + 100);
+  // (an arm that lies in front of the head, a chin in its hand, is behind the figure when it has its back to us)
+  const away = P(axes(SHOULDER)[1])[2] < -0.3;
+  const armZ = (el: V3, k: string) => (pose.over.includes(k) ? torsoZ + (away ? -400 : 400) : P(el)[2] < -6 ? P(el)[2] - 100 : P(el)[2] + 100);
   const order: { z: number; draw: () => void }[] = [
     { z: P(knL)[2] - 200, draw: () => leg(hjL, knL, anL, pose.kneeL) },
     { z: P(knR)[2] - 200, draw: () => leg(hjR, knR, anR, pose.kneeR) },

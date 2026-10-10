@@ -253,9 +253,9 @@ function her(c: Ctx, o: RoomOpts): Anchors {
   return a;
 }
 
-/** Him, two rows ahead of her, seen from behind. */
-function him(c: Ctx, t: number): Anchors {
-  const p = { ...HIM, t };
+/** Him, two rows ahead of her, seen from behind. `silhouette`: as one flat shape (to keep the windows' light off him). */
+function him(c: Ctx, t: number, silhouette?: string): Anchors {
+  const p = { ...HIM, t, silhouette };
   return atDesk(c, { ...p, boy: true }, () => drawBoy(c, 'sit-write', { ...p, outfit: 'autumn', nod: -10, light: [0.9, -0.45] }));
 }
 
@@ -286,6 +286,8 @@ export function drawClassroom(c: Ctx, g: Ctx, o: RoomOpts) {
   // (of the nearest window only the open part beside the curtain: her head is in front of the rest)
   WINDOWS.forEach(([Z0, Z1], i) => { const z = i ? Z1 : 1140; g.fillStyle = mix('paper', 'gold', 0.3, 0.075); g.fill(poly([P3(RIGHT, HEAD, z), P3(RIGHT, HEAD, Z0), P3(RIGHT, SILL, Z0), P3(RIGHT, SILL, z)])); });
   g.restore();
+  // (he sits in front of the far windows: their light is behind his head, not over it)
+  if (b.him > 0.003) { g.save(); g.globalCompositeOperation = 'destination-out'; g.globalAlpha = b.him; o.place(g, 0.9); g.translate(0, (1 - b.him) * 26); him(g, t, rgba('ink')); g.restore(); }
   g.save(); o.place(g, 0.9); g.globalAlpha *= light;
   lightShaft(g, BEAMS[1]!.shaft, { alpha: 0.022, t }); lightShaft(g, BEAMS[2]!.shaft, { alpha: 0.015, t });
   dustMotes(g, t, { shafts: BEAMS.map((bm) => bm.shaft), count: 110, seed: 4 });
