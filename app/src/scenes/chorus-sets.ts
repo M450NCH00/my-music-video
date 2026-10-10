@@ -201,7 +201,7 @@ function goods(c: Ctx, kind: number, x: number, y: number, s = 1) {
   }
   c.restore();
 }
-/** A low shop front standing on (x, base): its sign (a picture of what it sells), its striped awning, its window lit from inside with the same in it, its door. */
+/** A low shop front standing on (x, base): its sign (a picture of what it sells: the only place it is shown), its striped awning, its window lit from inside, its door. */
 function shop(c: Ctx, x: number, base: number, w: number, h: number, i: number) {
   const tints = [mix('paper', 'peach', 0.32), mix('paper', 'blush', 0.5), mix('paper', 'sky', 0.4), mix('paper', 'gold', 0.42)], stripes = [rgba('peach'), mix('blush', 'rose', 0.15), mix('sky', 'navy', 0.1), mix('gold', 'peach', 0.3)];
   const wall = tints[i % 4]!, top = base - h, ay = top + 84, n = Math.round(w / 44), wy = ay + 66, wh = base - 26 - wy;
@@ -212,7 +212,6 @@ function shop(c: Ctx, x: number, base: number, w: number, h: number, i: number) 
   for (let j = 0; j < n; j++) { c.fillStyle = j % 2 ? rgba('paper') : stripes[(i + 1) % 4]!; poly(c, [[x + 8 + ((w - 16) * j) / n, ay], [x + 8 + ((w - 16) * (j + 1)) / n, ay], [x - 14 + ((w + 28) * (j + 1)) / n, ay + 46], [x - 14 + ((w + 28) * j) / n, ay + 46]]); c.fill(); }
   c.fillStyle = rgba('ink', 0.1); c.fillRect(x - 14, ay + 46, w + 28, 7);
   c.fillStyle = mix(mix('peach', 'ink', 0.3), mix('gold', 'paper', 0.3), 0.8); c.fillRect(x + 26, wy, w * 0.52, wh);
-  for (const u of [0.13, 0.39]) goods(c, i % 4, x + 26 + w * u, wy + wh * 0.5 + 8, Math.min(0.9, wh / 62));
   c.strokeStyle = rgba('paper', 0.9); c.lineWidth = 5; c.strokeRect(x + 26, wy, w * 0.52, wh);
   c.beginPath(); c.moveTo(x + 26 + w * 0.26, wy); c.lineTo(x + 26 + w * 0.26, wy + wh); c.stroke();
   c.fillStyle = mix(wall, 'ink', 0.32); c.fillRect(x + w - 104, wy - 8, 74, base - wy + 8);
