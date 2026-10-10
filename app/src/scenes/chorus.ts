@@ -1,6 +1,6 @@
 // CHORUS — one module for two timeline entries, told apart by ctx.params.n:
-//   n = 1  chorus 1 and the interlude after it: built here (Prompt 3 of docs/PROMPTS.md)
-//   n = 2  chorus 2: still the placeholder, until Prompt 5 builds it on the same pictures, in winter
+//   n = 1  chorus 1 and the interlude after it (Prompt 3 of docs/PROMPTS.md)
+//   n = 2  chorus 2 (Prompt 5): the same pictures and the same moves of the camera, in winter
 //
 // Chorus 1, 等你下课一起走好不好 → 把喜欢藏在书包拉链口, then the instrumental up to verse 2. Four pictures:
 //   the way home, one shot from the side that follows the two of them (drawWay):
@@ -21,6 +21,18 @@
 //   her window (drawRoom again), through the interlude: the moon goes over, morning comes, the leaves of the tree
 //     turn and come down on the beat, the calendar loses two pages, the first snow falls, and frost closes over the
 //     glass as the camera goes in on it: the last frame is CHORUS1_FROST, where verse 2 starts.
+//
+// Chorus 2 is the same eight lines months later, at the blue hour, in the snow (SEASONS[2]): what is different in it
+//     1  it starts on the sky and the four lamps verse 2 ends on (VERSE2_LAMPS): the terrace along the school's front
+//        comes up under them, and the camera comes down their posts to the two, who are together already
+//     2  the same run; their feet leave prints in the snow all the way, and raise it
+//     4  they walk closer; her steps are smaller still, and the stars they leave are brighter
+//     5  at the stop she takes his scarf out of her pocket and puts it round his neck; he gets on with it, and waves
+//     6  his 晚安 is there first; hers is her answer to it
+//     7  the photographs are of the stairs (verse 2), of the walk under the lamps, and of the scarf
+//     8  the pocket is full of stars already; today's goes in with them, the line after it, and the zip is shut on the
+//        beat before the bridge. Then the camera goes back from the bag to her desk under its lamp (CHORUS2_DESK), which
+//        is where the bridge starts: there is no interlude.
 // Everything is timed from the lines themselves, found by content, and from the beat grid: `q` counts beats from the cut.
 import * as THREE from 'three';
 import { Scene, type Frame } from '../engine/scene';
@@ -30,19 +42,23 @@ import { CJK_MID, F, font } from '../engine/type';
 import type { Line } from '../engine/lyrics';
 import { clamp, ease, keys, lerp, prog, smoothstep } from '../engine/util';
 import {
-  CHORUS1_FROST, Stage, VERSE1_WASH, camera, drawBoy, drawGirl, drawLyric, drawPhone, drawStar, glow, lightLeak, phoneGlow, scratch, sparkle,
-  type Cam, type Ctx, type LyricOpts, type PoseArg, type V2,
+  CHORUS1_FROST, Stage, VERSE1_WASH, VERSE2_LAMPS, camera, drawBoy, drawGirl, drawLyric, drawPhone, drawStar, glow, layer, lightLeak, phoneGlow, scratch, sparkle,
+  type Anchors, type Cam, type Ctx, type LyricOpts, type PoseArg, type V2,
 } from './_love';
-import { BAG, BUS, CHAT, FLOOR, ROOM, S, SEASONS, WAY, drawBagShot, drawChat, drawPhoto, drawRoom, drawWay, groundAt, inView, openings, seen } from './chorus-sets';
-import { placeholder } from './_placeholder';
+import {
+  BAG, BUS, CHAT, CHORUS2_DESK, FLOOR, GROUND, LAMP, ROOM, S, SEASONS, WAY, drawBagShot, drawChat, drawPhoto, drawRoom, drawScarfHeld, drawWay, groundAt, inView, openings, seen,
+  type Lamp,
+} from './chorus-sets';
+import { drawScarfEnd, drawStairs, drawWalker, onStairs } from './verse2-sets';
 
-/** Chorus 2 is Prompt 5's: until then its entry of the timeline shows the placeholder. */
-const Chorus2 = placeholder('Chorus 2', 'chorus');
 /**
  * On the way, px a beat. A walk is two steps a beat (a stride of the kit's walk, two steps, is 232 units; of its
- * run, 400), the little run three; her small steps are three a beat as well, each SMALL of a step long.
+ * run, 400), the little run three; her small steps are three a beat as well, each SMALL of a step long (chorus 1,
+ * chorus 2: smaller still, so that the stars they leave lie closer).
  */
-const WALK = 232 * S, STRIDE_RUN = 400 * S, RUN = 1.5 * STRIDE_RUN, SMALL = 0.36, TINY = 1.5 * SMALL * WALK;
+const WALK = 232 * S, STRIDE_RUN = 400 * S, RUN = 1.5 * STRIDE_RUN, SMALL = [0.36, 0.3];
+/** How far behind him she walks, and stands at the stop (px): chorus 1; chorus 2, where they are closer. */
+const APART = [WAY.him - WAY.her, 150];
 /** Where the two are on the way is tabled once: from beat Q0 on, every DQ beats. */
 const Q0 = -1, DQ = 0.01, QN = 2300;
 /** The two rows the lines of the walk take in turn, over their heads (y). */
@@ -51,11 +67,14 @@ const ROW_A = 136, ROW_B = 232;
 const PHOTOS: { x: number; y: number; w: number; rot: number; crop: [number, number, number] }[] = [
   { x: 372, y: 300, w: 330, rot: -0.07, crop: [960, 640, 900] }, { x: 812, y: 236, w: 286, rot: 0.05, crop: [1010, 650, 900] }, { x: 1226, y: 322, w: 322, rot: 0.085, crop: [930, 560, 960] },
 ];
+/** (and what chorus 2's are prints of: the stairs, the walk under the lamps, the scarf) */
+const CROPS2: [number, number, number][] = [[960, 610, 900], [960, 640, 900], [960, 600, 800]];
 /** What she types in the end, in place of all she did not say. (Not a line of the song: it is plain ink, and 噢 is in the fonts for it: analysis/make_fonts.py.) */
 const NOTE = '明天见噢';
-/** The sky in her window, top to bottom: at night, at dawn, by day, and when the snow comes. */
+/** The sky in her window, top to bottom: at night, at dawn, by day, and when the snow comes; and the night it snows in (chorus 2). */
 const NIGHT_SKY = [mix('navy', 'ink', 0.1), mix('navy', 'dusk', 0.35), mix('dusk', 'navy', 0.3)], DAWN_SKY = [mix('dusk', 'sky', 0.3), mix('blush', 'peach', 0.5), mix('gold', 'peach', 0.4)];
 const DAY_SKY = [mix('sky', 'paper', 0.15), mix('sky', 'paper', 0.5), mix('paper', 'gold', 0.3)], SNOW_SKY = [mix('frost', 'sky', 0.3), mix('frost', 'paper', 0.5), mix('paper', 'frost', 0.25)];
+const SNOW_NIGHT = [mix('navy', 'dusk', 0.16), mix('navy', 'dusk', 0.44), mix('dusk', 'navy', 0.22)];
 const blend = (a: string[], b: string[], k: number) => a.map((col, i) => mix(col, b[i]!, k));
 const sine = ease.inOutSine;
 /**
@@ -68,10 +87,14 @@ const SHADE = rgba('ink');
 type Picture = (c: Ctx, g: Ctx, t: number, q: number) => void;
 
 export default class Chorus extends Scene {
-  private later = this.ctx.params.n === 2 ? new Chorus2(this.ctx) : null;
-  private stage = this.later ? null : new Stage(this.ctx);
+  /** Chorus 2: the same pictures, in winter. */
+  private winter = this.ctx.params.n === 2;
+  private stage = new Stage(this.ctx);
   /** The season: its colours, clothes and air (chorus-sets.ts keeps what depends on it in one place). */
-  private season = SEASONS[1]!;
+  private season = SEASONS[this.winter ? 2 : 1]!;
+  /** How long her small steps are, of a step; and how fast she goes with them (px a beat). */
+  private small = SMALL[this.winter ? 1 : 0]!;
+  private tiny = 1.5 * this.small * WALK;
   /** The beat of the cut, and the eight lines. */
   private b0 = 0;
   private L: Line[] = [];
@@ -79,7 +102,9 @@ export default class Chorus extends Scene {
   private cuts: { at: number; half: number }[] = [];
   private T = {
     clear: 0, step: [0, 0], run: [0, 0], tiny: [0, 0], stop: 0, bus: [0, 0], look: [0, 0], board: [0, 0], window: 0, leave: 0,
-    sent: 0, erase: [0, 0], again: [0, 0], photos: [0, 0, 0], shots: [0, 0, 0], star: [0, 0], pull: [0, 0], flow: 0, zipped: 0, falls: [0, 0, 0], flips: [0, 0], end: 0,
+    sent: 0, erase: [0, 0], again: [0, 0], photos: [0, 0, 0], shots: [0, 0, 0], star: [0, 0], pull: [0, 0], flow: [0], zipped: 0, falls: [0, 0, 0], flips: [0, 0], end: 0,
+    // (chorus 2 alone)
+    there: [0, 0], crane: [0, 0], take: [0, 0], face: [0, 0], lift: [0, 0], on: 0, drop: [0, 0], his: 0, unzip: [0, 0], pat: [0, 0], back: [0, 0],
   };
   /** Where she and he are on the way (x), and where each is in their stride (cycles of two steps), by beat: see Q0. */
   private xh = new Float64Array(QN); private xb = new Float64Array(QN); private ph = new Float64Array(QN); private pb = new Float64Array(QN);
@@ -87,6 +112,12 @@ export default class Chorus extends Scene {
   private stars: { x: number; q: number }[] = [];
   /** The dust of their run: where each foot comes down (x, y of the way), and when (s). */
   private dust: { x: number; y: number; t: number }[] = [];
+  /** Chorus 2: the lamps along the way; the prints of their feet in the snow; their breath (where it leaves a mouth, when, which way). */
+  private lamps: Lamp[] = [];
+  /** Chorus 2 starts with the camera this much higher than it follows the two at (px, negative: up): on the lamps, where verse 2 leaves its lights. */
+  private rise = 0;
+  private prints: { x: number; y: number; t: number; run: boolean }[] = [];
+  private breath: { x: number; y: number; t: number; dir: number }[] = [];
   /** The frames the photographs are prints of. */
   private kept: HTMLCanvasElement[] | null = null;
   /** How bright the light layer is added this frame: 2.2 as everywhere, but for the first frames (VERSE1_WASH) and the last (CHORUS1_FROST). */
@@ -94,16 +125,16 @@ export default class Chorus extends Scene {
   private pictures: Picture[] = [(c, g, t, q) => this.walk(c, g, t, q), (c, g, t, q) => this.room(c, g, t, q), (c, g, t, q) => this.bag(c, g, t, q), (c, g, t, q) => this.window(c, g, t, q)];
 
   override init() {
-    if (this.later) return this.later.init();
-    const { audio, lyrics } = this.ctx, nth = (this.ctx.params.n ?? 1) - 1;
+    const { audio, lyrics } = this.ctx, W2 = this.winter;
     this.b0 = Math.round(audio.beatAt(this.ctx.start));
     const q = (t: number) => audio.beatAt(t) - this.b0;
-    const L = (this.L = ['等你下课一起走好不好', '从黑板到校门只要一条小跑', '你说要回家我就陪你到车站口', '多走几步都算偷到', '等你下课再见一面就好', '把今天没说完的写在晚安后', '慢慢走', '把喜欢藏在书包拉链口'].map((s) => lyrics.get(s, nth)));
-    const from = (i: number) => q(L[i]!.start), to = (i: number) => q(L[i]!.end), sung = (i: number, ch: number) => q(L[i]!.words[ch]!.start);
-    // the pictures change as line 6 starts, as line 8 starts, and half a beat after the zip is shut: on the first downbeat after line 8
-    const zipped = q(audio.downbeats.find((d) => d > L[7]!.end - 0.02) ?? L[7]!.end), room = from(5) - 0.2, bag = from(7) - 0.25, win = zipped + 0.55;
-    this.cuts = [{ at: room, half: 0.45 }, { at: bag, half: 0.3 }, { at: win, half: 0.45 }];
-    const stop = to(3), halt = stop + 1, falls = Math.ceil(win + 2.3), flips = Math.ceil(win + 1.2);
+    const L = (this.L = ['等你下课一起走好不好', '从黑板到校门只要一条小跑', '你说要回家我就陪你到车站口', '多走几步都算偷到', '等你下课再见一面就好', '把今天没说完的写在晚安后', '慢慢走', '把喜欢藏在书包拉链口'].map((s) => lyrics.get(s, W2 ? 1 : 0)));
+    const from = (i: number) => q(L[i]!.start), to = (i: number) => q(L[i]!.end), sung = (i: number, ch: number) => q(L[i]!.words[ch]!.start), end = q(this.ctx.end);
+    // the pictures change as line 6 starts, as line 8 starts, and half a beat after the zip is shut: on the first downbeat after line 8.
+    // (In chorus 2 that downbeat is the cut to the bridge: there the zip is shut on the beat before it, and by the cut the picture is back at her desk.)
+    const zipped = W2 ? Math.round(end) - 1 : q(audio.downbeats.find((d) => d > L[7]!.end - 0.02) ?? L[7]!.end), room = from(5) - 0.2, bag = from(7) - 0.25, win = zipped + 0.55;
+    this.cuts = [{ at: room, half: 0.45 }, { at: bag, half: 0.3 }, ...(W2 ? [] : [{ at: win, half: 0.45 }])];
+    const stop = to(3), halt = stop + 1, falls = Math.ceil(win + 2.3), flips = Math.ceil(win + 1.2), on = sung(4, 3) - 0.1;
     const T = (this.T = {
       // 1: verse 1's light is off the picture soon after 课; she has caught him up, and is in step with him on 走
       clear: sung(0, 3) + 0.5, step: [sung(0, 4) + 0.35, sung(0, 6)],
@@ -112,16 +143,26 @@ export default class Chorus extends Scene {
       // 4: her steps get small as the line starts; they stop as it ends
       tiny: [from(3) - 0.1, from(3) + 0.35], stop,
       // 5: the bus comes in behind them and has stopped a beat on; he looks back at her, gets on, is at his window on 见; the bus leaves on 一面
-      bus: [stop - 0.35, halt], look: [from(4) - 0.1, from(4) + 0.3], board: [halt + 0.1, sung(4, 4) + 0.25], window: sung(4, 5), leave: sung(4, 6) + 0.15,
+      // (chorus 2: the scarf first, see below; he gets on over 再见, is at his window on 一面, and the bus leaves on 就好)
+      bus: [stop - 0.35, halt], look: [from(4) - 0.1, from(4) + 0.3], board: W2 ? [sung(4, 4) + 0.15, sung(4, 5) + 0.35] : [halt + 0.1, sung(4, 4) + 0.25], window: sung(4, W2 ? 6 : 5), leave: W2 ? sung(4, 8) : sung(4, 6) + 0.15,
       // 6, 7: her 晚安 goes as the room comes up; over 慢慢走 she takes the message out again, and into 慢慢讲 she types NOTE instead; the photographs come up one after the other
-      sent: room - 0.15, erase: [from(6) + 0.05, sung(6, 2) + 0.4], again: [sung(6, 3) - 0.45, sung(6, 4) + 0.3], photos: [from(6) - 0.65, from(6) + 0.3, sung(6, 3) - 0.75],
-      // (what they are photographs of: the corridor, the gate as they run out of it, his wave from the bus)
-      shots: [sung(0, 9) + 0.2, to(1) - 0.2, sung(4, 6) + 0.35],
+      sent: room + (W2 ? 0.05 : -0.15), erase: [from(6) + 0.05, sung(6, 2) + 0.4], again: [sung(6, 3) - 0.45, sung(6, 4) + 0.3], photos: [from(6) - 0.65, from(6) + 0.3, sung(6, 3) - 0.75],
+      // (what they are photographs of: the corridor, the gate as they run out of it, his wave from the bus. Chorus 2: the stairs, which are verse 2's; the walk under the lamps; the scarf)
+      shots: W2 ? [0, sung(2, 8), on + 0.3] : [sung(0, 9) + 0.2, to(1) - 0.2, sung(4, 6) + 0.35],
       // 8: the star goes in on 藏; her hand is back for the pull on 拉链; the line goes in after the star, and the zip is shut on the downbeat
-      star: [sung(7, 3) - 0.12, sung(7, 3) + 0.5], pull: [sung(7, 7) - 0.25, sung(7, 8) + 0.1], flow: to(7) - 0.85, zipped,
+      // (chorus 2: its characters go in one after the other from 拉 on, none before it has been sung, and the zip is shut behind the last)
+      star: [sung(7, 3) - 0.12, sung(7, 3) + 0.5], pull: [sung(7, 7) - 0.25, sung(7, 8) + 0.1], flow: L[7]!.words.map((_w, k) => (W2 ? Math.max(sung(7, 7) + 0.1 * k, sung(7, k) + 0.12) : to(7) - 0.85 + 0.045 * k)), zipped,
       // the interlude: the leaves let go on three beats, the calendar turns a page on two
       falls: [falls, falls + 1, falls + 2], flips: [flips, flips + 2],
-      end: q(this.ctx.end),
+      end,
+      // chorus 2. 1: the place comes up under the lamps, and the camera comes down from them
+      there: [0.05, 1.15], crane: [0.1, 1.9],
+      // 5: as they stop her hand goes to her pocket, and he turns round to her; through 等你下 the scarf goes up to his neck, and is round it on 课; her hands come down again
+      take: [stop, stop + 0.45], face: [stop + 0.1, stop + 0.6], lift: [from(4) + 0.05, on - 0.1], on, drop: [sung(4, 3) + 0.2, sung(4, 4) + 0.2],
+      // 6: his 晚安 is there as the room comes up, hers after it
+      his: room - 0.3,
+      // 8: the zip is drawn open over 把喜欢; the stars are pressed down a little after today's has gone in; from the zip on, the camera goes back to her desk
+      unzip: [bag + 0.1, sung(7, 2) + 0.2], pat: [sung(7, 3) + 0.55, sung(7, 3) + 1.2], back: [zipped - 0.3, end - 0.02],
     });
     // where they are, beat by beat: how fast each goes, and so how far along the way and how far through a stride
     const run = (v: number) => clamp((v - WALK) / (RUN - WALK));
@@ -130,23 +171,43 @@ export default class Chorus extends Scene {
       const x = Q0 + i * DQ, vh = this.speed(x, false), vb = this.speed(x, true);
       this.xh[i] = dh; this.xb[i] = db; this.ph[i] = wh; this.pb[i] = wb;
       dh += vh * DQ; db += vb * DQ;
-      wh += (vh / (lerp(WALK, STRIDE_RUN, run(vh)) * lerp(1, SMALL, sine(prog(x, T.tiny[0]!, T.tiny[1]!))))) * DQ;
+      wh += (vh / (lerp(WALK, STRIDE_RUN, run(vh)) * lerp(1, this.small, sine(prog(x, T.tiny[0]!, T.tiny[1]!))))) * DQ;
       wb += (vb / lerp(WALK, STRIDE_RUN, run(vb))) * DQ;
     }
     // (they end at the bus stop; his feet pass each other on the beat, as the kit's walk has it, and hers are the other way about)
     const at = (a: Float64Array, x: number) => a[Math.round((x - Q0) / DQ)]!, shift = (a: Float64Array, d: number) => { for (let i = 0; i < QN; i++) a[i]! += d; };
-    shift(this.xh, WAY.her - at(this.xh, stop + 0.5)); shift(this.xb, WAY.him - at(this.xb, stop + 0.5));
+    shift(this.xh, WAY.him - APART[W2 ? 1 : 0]! - at(this.xh, stop + 0.5)); shift(this.xb, WAY.him - at(this.xb, stop + 0.5));
     shift(this.pb, -at(this.pb, 0)); shift(this.ph, 0.5 - ((at(this.ph, T.step[1]! + 0.6) - at(this.pb, T.step[1]! + 0.6)) % 1));
     // their run: a little dust where each foot comes down (in the kit's run a foot lands 0.14 and 0.64 of the way through a stride, well ahead of the body)
-    for (const [xs, ps, him] of [[this.xh, this.ph, false], [this.xb, this.pb, true]] as [Float64Array, Float64Array, boolean][]) for (let i = 1; i < QN; i++) {
+    const both = [[this.xh, this.ph, false], [this.xb, this.pb, true]] as [Float64Array, Float64Array, boolean][];
+    for (const [xs, ps, him] of both) for (let i = 1; i < QN; i++) {
       const x = Q0 + i * DQ, fx = xs[i]! + 70 * S;
       if (x > 0 && run(this.speed(x, him)) > 0.35 && Math.floor(ps[i]! * 2 - 0.28) !== Math.floor(ps[i - 1]! * 2 - 0.28)) this.dust.push({ x: fx, y: groundAt(fx) + (him ? 0 : 12), t: this.at(x) });
     }
     // her small steps: a star where each foot comes down
     for (let i = 1; i < QN; i++) {
       const x = Q0 + i * DQ;
-      if (x > T.tiny[1]! && x < stop - 0.1 && Math.floor(this.ph[i]! * 2 - 0.5) !== Math.floor(this.ph[i - 1]! * 2 - 0.5)) this.stars.push({ x: this.xh[i]! + 58 * SMALL * S, q: x });
+      if (x > T.tiny[1]! && x < stop - 0.1 && Math.floor(this.ph[i]! * 2 - 0.5) !== Math.floor(this.ph[i - 1]! * 2 - 0.5)) this.stars.push({ x: this.xh[i]! + 58 * this.small * S, q: x });
     }
+    if (!W2) return;
+    // chorus 2. The snow keeps the print of every step (at a walk a foot lands a quarter and three quarters of the way
+    // through a stride), but for her small ones, which leave stars, and for those on the steps
+    for (const [xs, ps, him] of both) for (let i = 1; i < QN; i++) {
+      const x = Q0 + i * DQ, fast = run(this.speed(x, him)) > 0.35, land = fast ? 0.28 : 0.5, fx = xs[i]! + (fast ? 70 : 58) * S;
+      if (x >= stop || (!him && x > T.tiny[0]!) || Math.floor(ps[i]! * 2 - land) === Math.floor(ps[i - 1]! * 2 - land) || (fx > WAY.steps - 40 && fx < WAY.yard + 30)) continue;
+      this.prints.push({ x: fx, y: groundAt(fx) + (him ? 0 : 12), t: this.at(x), run: fast });
+    }
+    // The lamps: four along the terrace, which are verse 2's four lights under the camera of the first frame
+    // (VERSE2_LAMPS); two in the yard; three along the street, one of them at the bus stop, its sign on it
+    this.rise = FLOOR - LAMP.h - VERSE2_LAMPS.at[0][1] - this.camera(0).y;
+    const cam0 = this.camera(0);
+    this.lamps = [...VERSE2_LAMPS.at.map(([x]) => ({ x: cam0.x + x, y: FLOOR })), ...[2400, 2790, 3480, WAY.sign, 5450].map((x) => ({ x, y: GROUND - 6 }))];
+    // Their breath in the cold: hers as each line starts (and where line 3 takes breath again), his while he talks, and once at the stop
+    const mouth = (him: boolean, x: number, dir = 1) => {
+      const xs = this.tab(him ? this.xb : this.xh, x), k = him ? 1.05 * S : S;
+      return { x: xs + dir * (58 + 56 * run(this.speed(x, him))) * k, y: groundAt(xs) + (him ? 0 : 12) - 535 * k, t: this.at(x), dir };
+    };
+    this.breath = [...[from(0) + 0.3, from(1), from(2), sung(2, 5), from(3), from(4)].map((x) => mouth(false, x)), ...[0.8, 1.9, 3].map((x) => mouth(true, T.run[1]! + x)), mouth(true, on + 0.4, -1)];
   }
 
   /** The time of a beat counted from the cut. */
@@ -154,22 +215,40 @@ export default class Chorus extends Scene {
   /** A value of one of the tables of the way at beat q. */
   private tab(a: Float64Array, q: number) { const f = clamp((q - Q0) / DQ, 0, QN - 1.001), i = Math.floor(f); return lerp(a[i]!, a[i + 1]!, f - i); }
   /**
-   * How fast she, or he, goes along the way at beat q (px a beat). She runs in and falls into step; both run through
-   * line 2 (she is off first and slows first, and so closer behind him for it), walk, go slowly
-   * with her small steps, and stop.
+   * How fast she, or he, goes along the way at beat q (px a beat). She runs in and falls into step (in chorus 2 she is
+   * only a step behind him, and has to hurry a little); both run through line 2 (she is off first and slows first,
+   * and so closer behind him for it), walk, go slowly with her small steps, and stop.
    */
   private speed(q: number, him: boolean) {
-    const T = this.T, late = him ? [0.15, 0.15] : [0, 0];
-    if (!him && q < T.step[1]!) return lerp(RUN, WALK, sine(prog(q, T.step[0]!, T.step[1]!)));
+    const T = this.T, late = him ? [0.15, 0.15] : [0, 0], TINY = this.tiny;
+    if (!him && q < T.step[1]!) return lerp(this.winter ? 1.25 * WALK : RUN, WALK, sine(prog(q, T.step[0]!, T.step[1]!)));
     return keys(q, [
       [T.run[0]! + late[0]!, WALK], [T.run[0]! + late[0]! + 0.4, RUN, sine], [T.run[1]! - 0.55 + late[1]!, RUN], [T.run[1]! + late[1]!, WALK, sine],
       [T.tiny[0]!, WALK], [T.tiny[1]!, TINY, sine], [T.stop - 0.5, TINY], [T.stop, 0, sine],
     ]);
   }
+  /**
+   * The camera of the walk at beat q: on him until she has caught up; back a little and ahead of them while they run;
+   * back again for the bus stop. (Chorus 2: it starts high, on the lamps, and comes down to the two; and at the stop
+   * it stays close for the scarf, and goes back when he gets on.)
+   */
+  private camera(q: number) {
+    const T = this.T, W2 = this.winter, xh = this.tab(this.xh, q), xb = this.tab(this.xb, q), wide = W2 ? [T.drop[1]!, T.board[1]! + 0.2] : [T.stop - 0.4, T.bus[1]! + 0.2];
+    const on = lerp(xb - 40, (xh + xb) / 2, sine(prog(q, 0.2, T.step[1]!))), ground = lerp(groundAt(WAY.steps), groundAt(WAY.yard), smoothstep(WAY.steps - 220, WAY.yard + 240, on + 60));
+    const zoom = (W2
+      ? keys(q, [[T.run[0]!, 1], [T.run[0]! + 1, 0.88, sine], [T.run[1]! - 0.8, 0.88], [T.run[1]! + 0.6, 1, sine], [T.stop - 0.4, 1], [T.on, 1.06, sine], [wide[0]!, 1.06], [wide[1]!, 0.82, sine]])
+      : keys(q, [[T.run[0]!, 1], [T.run[0]! + 1, 0.9, sine], [T.run[1]! - 0.8, 0.9], [T.run[1]! + 0.6, 1, sine], [T.stop - 0.4, 1], [T.bus[1]! + 0.2, 0.82, sine]])) * (1 + 0.012 * prog(q, W2 ? wide[1]! : T.bus[1]!, this.cuts[0]!.at + 0.5));
+    const sx = keys(q, [[0, 650], [T.step[1]! + 0.4, 960, sine], [T.run[0]!, 960], [T.run[0]! + 1.1, 800, sine], [T.run[1]! - 0.6, 800], [T.run[1]! + 0.9, 960, sine], [wide[0]!, 960], [wide[1]!, 780, sine]]);
+    // (for the scarf it looks a little down on them, which keeps the bus's roof clear of the line)
+    const sy = W2 ? keys(q, [[T.stop - 0.4, FLOOR], [T.on, 962, sine], [wide[0]!, 962], [wide[1]!, 884, sine]]) : keys(q, [[wide[0]!, FLOOR], [wide[1]!, 884, sine]]);
+    const rise = W2 ? this.rise * (1 - sine(prog(q, T.crane[0]!, T.crane[1]!))) : 0;
+    // (and it starts from rest, as verse 2 ends: it falls in with them over the first beat, and makes up what it has lost)
+    const u = clamp(q / 0.9), lag = W2 ? WALK * (Math.min(q, 0.9) - 0.9 * (u ** 3 - u ** 4 / 2)) * (1 - sine(prog(q, 1.2, 3.2))) : 0;
+    return { zoom, x: on - W / 2 - (sx - W / 2) / zoom - lag, y: ground - H / 2 - (sy - H / 2) / zoom + rise };
+  }
 
   render(f: Frame, out: THREE.WebGLRenderTarget) {
-    if (this.later) return this.later.render(f, out);
-    const { c, g } = this.stage!.begin(), q = f.beat - this.b0, cuts = this.cuts;
+    const { c, g } = this.stage.begin(), q = f.beat - this.b0, cuts = this.cuts;
     // which picture; round a cut the next one comes up over it, on a canvas of its own
     let i = 0;
     while (i < cuts.length && q >= cuts[i]!.at + cuts[i]!.half) i++;
@@ -181,7 +260,7 @@ export default class Chorus extends Scene {
       g.save(); g.globalAlpha = k; this.pictures[i + 1]!(next.c, g, f.t, q); g.restore();
       c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = k; c.drawImage(next.cv, 0, 0, W, H); c.restore();
     }
-    this.stage!.end(out, { light: this.light });
+    this.stage.end(out, { light: this.light });
   }
 
   /** A line of the lyrics on the picture, kept clear of the light. Returns its characters as drawn. */
@@ -194,15 +273,10 @@ export default class Chorus extends Scene {
   // ------------------------------------------------------------------ 1 to 5: the way home
   /** `bare`: the picture without its lines (for the photographs of it). */
   private walk(c: Ctx, g: Ctx, t: number, q: number, bare = false) {
-    const T = this.T, s = this.season, L = this.L;
+    const T = this.T, s = this.season, L = this.L, W2 = this.winter, TINY = this.tiny;
     const xh = this.tab(this.xh, q), xb = this.tab(this.xb, q), ph = this.tab(this.ph, q), pb = this.tab(this.pb, q), vh = this.speed(q, false), vb = this.speed(q, true);
     const runH = clamp((vh - WALK) / (RUN - WALK)), runB = clamp((vb - WALK) / (RUN - WALK)), small = sine(prog(q, T.tiny[0]!, T.tiny[1]!)), stopped = q >= T.stop;
-    // the camera: on him until she has caught up; back a little and ahead of them while they run; back again for the bus stop
-    const on = lerp(xb - 40, (xh + xb) / 2, sine(prog(q, 0.2, T.step[1]!))), ground = lerp(groundAt(WAY.steps), groundAt(WAY.yard), smoothstep(WAY.steps - 220, WAY.yard + 240, on + 60));
-    const zoom = keys(q, [[T.run[0]!, 1], [T.run[0]! + 1, 0.9, sine], [T.run[1]! - 0.8, 0.9], [T.run[1]! + 0.6, 1, sine], [T.stop - 0.4, 1], [T.bus[1]! + 0.2, 0.82, sine]]) * (1 + 0.012 * prog(q, T.bus[1]!, this.cuts[0]!.at + 0.5));
-    const sx = keys(q, [[0, 650], [T.step[1]! + 0.4, 960, sine], [T.run[0]!, 960], [T.run[0]! + 1.1, 800, sine], [T.run[1]! - 0.6, 800], [T.run[1]! + 0.9, 960, sine], [T.stop - 0.4, 960], [T.bus[1]! + 0.2, 780, sine]]);
-    const sy = keys(q, [[T.stop - 0.4, FLOOR], [T.bus[1]! + 0.2, 884, sine]]);
-    const cam: Cam = { zoom, x: on - W / 2 - (sx - W / 2) / zoom, y: ground - H / 2 - (sy - H / 2) / zoom };
+    const cam: Cam = this.camera(q), light: V2 = W2 ? [0.25, -0.95] : [0.85, -0.35];
     // the bus: in from behind them, slowing; and off again
     const door = (BUS.door[0] + BUS.door[1]) / 2, busX = WAY.door - door * BUS.k - 2000 * (1 - prog(q, T.bus[0]!, T.bus[1]!)) ** 2 + 520 * Math.max(0, q - T.leave) ** 2;
     const doors = sine(prog(q, T.bus[1]! - 0.1, T.bus[1]! + 0.25)) * (1 - sine(prog(q, T.window - 0.05, T.window + 0.3)));
@@ -211,28 +285,45 @@ export default class Chorus extends Scene {
     const notice = sine(prog(q, T.step[0]!, T.step[1]! + 0.3)) * (1 - sine(prog(q, T.run[0]! - 0.5, T.run[0]! + 0.1))), chat = sine(prog(q, T.run[1]! + 0.5, T.run[1]! + 1.2)) * (1 - sine(prog(q, T.tiny[0]! - 0.5, T.tiny[0]!)));
     const wonder = sine(prog(q, T.tiny[1]!, T.tiny[1]! + 0.5)) * (1 - sine(prog(q, T.stop - 1, T.stop - 0.3))), look = sine(prog(q, T.look[0]!, T.look[0]! + 0.3)) * (1 - sine(prog(q, T.look[1]!, T.look[1]! + 0.3)));
     const on1 = sine(prog(q, T.board[0]!, T.board[1]!)), inside = q >= T.board[1]!;
+    // (chorus 2, at the stop: her hand goes to her pocket and he turns round to her; she lifts his scarf to his neck,
+    // and it is round it; her hands come down, and they are glad)
+    const take = W2 ? sine(prog(q, T.take[0]!, T.take[1]!)) : 0, faced = W2 ? sine(prog(q, T.face[0]!, T.face[1]!)) : 0, lift = W2 ? sine(prog(q, T.lift[0]!, T.lift[1]!)) : 0;
+    const drop = W2 ? sine(prog(q, T.drop[0]!, T.drop[1]!)) : 0, glad = W2 ? sine(prog(q, T.on - 0.1, T.on + 0.5)) : 0, got: { him?: Anchors; her?: Anchors } = {};
     const he = (x: Ctx, silhouette?: string) => {
       if (inside) return;
-      const pose: PoseArg = on1 > 0 ? { from: 'stand', to: 'walk', k: Math.sin(Math.PI * on1) } : stopped ? 'turn-smile' : q < T.tiny[0]! ? { from: 'walk', to: 'run', k: runB } : { from: 'stand', to: 'walk', k: clamp(vb / TINY) };
-      drawBoy(x, pose, {
-        x: lerp(xb, busX + door * BUS.k, on1), y: lerp(groundAt(xb), BUS.road - BUS.floor * BUS.k, smoothstep(0.4, 0.95, on1)), scale: S * lerp(1, BUS.k, on1), facing: 90 + 90 * smoothstep(0, 0.55, on1),
-        t, walk: pb + 1.5 * on1, k: look, outfit: s.outfit, wind: -0.1 - 0.45 * runB, headTurn: -30 * notice - 20 * chat - 38 * wonder, smile: 0.45 + 0.4 * notice, blush: 0.4,
-        light: [0.85, -0.35], shadow: silhouette ? 0 : 0.7 * (1 - on1), silhouette,
+      const pose: PoseArg = on1 > 0 ? { from: 'stand', to: 'walk', k: Math.sin(Math.PI * on1) } : stopped ? (W2 ? { from: 'stand', to: 'face-each-other', k: faced } : 'turn-smile') : q < T.tiny[0]! ? { from: 'walk', to: 'run', k: runB } : { from: 'stand', to: 'walk', k: clamp(vb / TINY) };
+      const a = drawBoy(x, pose, {
+        x: lerp(xb, busX + door * BUS.k, on1), y: lerp(groundAt(xb), BUS.road - BUS.floor * BUS.k, smoothstep(0.4, 0.95, on1)), scale: S * lerp(1, BUS.k, on1),
+        facing: W2 ? 90 - 180 * faced - 90 * smoothstep(0, 0.55, on1) : 90 + 90 * smoothstep(0, 0.55, on1),
+        t, walk: pb + 1.5 * on1, k: look, outfit: s.outfit, scarf: W2 ? q >= T.on : undefined, wind: -0.1 - 0.45 * runB,
+        headTurn: -30 * notice - 20 * chat - 38 * wonder, nod: W2 ? 10 * lift * (1 - drop) : undefined, smile: 0.45 + 0.4 * notice + 0.45 * glad, blush: 0.4 + 0.5 * glad,
+        light, shadow: silhouette ? 0 : 0.7 * (1 - on1), silhouette,
       });
+      if (!silhouette) got.him = a;
     };
     // her: running in, in step, running, her small steps (her eyes on her feet); at the stop she turns to the bus and waves it off
     const turn = sine(prog(q, T.board[0]! + 0.1, T.window)), wave = sine(prog(q, T.window - 0.15, T.window + 0.3)), after = sine(prog(q, T.leave, T.leave + 1.2));
     const she = (x: Ctx, silhouette?: string) => {
-      const pose: PoseArg = wave > 0 ? { from: 'stand', to: 'wave', k: wave } : q < T.tiny[0]! ? { from: 'walk', to: 'run', k: runH } : { from: 'stand', to: 'walk', k: lerp(1, SMALL, small) * clamp(vh / TINY) };
-      drawGirl(x, pose, {
+      const pose: PoseArg = wave > 0 ? { from: 'stand', to: 'wave', k: wave } : drop > 0 ? { from: 'reach', to: 'stand', k: drop } : lift > 0 ? { from: 'pocket', to: 'reach', k: lift } : take > 0 ? { from: 'stand', to: 'pocket', k: take }
+        : q < T.tiny[0]! ? { from: 'walk', to: 'run', k: runH } : { from: 'stand', to: 'walk', k: lerp(1, this.small, small) * clamp(vh / TINY) };
+      const a = drawGirl(x, pose, {
         x: xh, y: groundAt(xh) + 12, scale: S, facing: 90 + 60 * turn, t, walk: wave > 0 ? t * 1.5 : ph, outfit: s.outfit, wind: -0.12 - 0.5 * runH,
-        headTurn: -56 * turn - 6 * after, nod: 12 * small * (1 - sine(prog(q, T.stop - 0.4, T.stop + 0.3))) - 8 * turn, smile: 0.48 + 0.5 * Math.max(runH, small * (1 - turn)), blush: 0.7 + 0.3 * small,
-        light: [0.85, -0.35], shadow: silhouette ? 0 : 0.7, silhouette,
+        headTurn: -56 * turn - 6 * after, nod: 12 * small * (1 - sine(prog(q, T.stop - 0.4, T.stop + 0.3))) - 8 * turn, smile: 0.48 + 0.5 * Math.max(runH, small * (1 - turn), 0.8 * glad * (1 - turn)), blush: 0.7 + 0.3 * small,
+        light, shadow: silhouette ? 0 : 0.7, silhouette,
       });
+      if (silhouette) return;
+      got.her = a;
+      if (!W2) return;
+      // his scarf: its end looks out of her pocket; then it is in her hand, goes up with it, and is round his neck
+      const held = prog(q, T.take[1]! - 0.12, T.take[1]! + 0.2), k = smoothstep(0.15, 0.7, lift), hand: V2 = [lerp(a.handR[0], (a.handL[0] + a.handR[0]) / 2, k), lerp(a.handR[1], (a.handL[1] + a.handR[1]) / 2, k)];
+      if (held <= 0) drawScarfEnd(x, a.pocket, a.scale, t, -0.2 - 0.4 * runH);
+      else drawScarfHeld(x, hand, lerp(44, 104, held) * a.scale * (1 - prog(q, T.on - 0.05, T.on + 0.12)), a.scale, t, -110 * a.scale * lift * (1 - lift));
     };
     const two = (x: Ctx, silhouette?: string) => { he(x, silhouette); she(x, silhouette); };
+    // (chorus 2: the place comes up under the lamps it starts on)
+    const there = W2 ? sine(prog(q, T.there[0]!, T.there[1]!)) : 1;
     drawWay(c, g, {
-      t, cam, season: s, late: smoothstep(T.run[0]!, T.stop + 2.5, q), dust: this.dust.filter((d) => t > d.t && t - d.t < 0.62).map((d) => ({ x: d.x, y: d.y, age: t - d.t })),
+      t, cam, season: s, late: W2 ? smoothstep(0.3, 8, q) : smoothstep(T.run[0]!, T.stop + 2.5, q), dust: this.dust.filter((d) => t > d.t && t - d.t < 0.62).map((d) => ({ x: d.x, y: d.y, age: t - d.t })),
       stars: this.stars.map((st) => ({ x: st.x, age: t - this.at(st.q) })), two,
       bus: q <= T.bus[0]! ? undefined : {
         x: busX, door: doors,
@@ -241,43 +332,60 @@ export default class Chorus extends Scene {
           drawBoy(x, { from: 'stand', to: 'wave', k: sine(prog(q, T.window - 0.1, T.window + 0.3)) }, { x: lerp(door, (BUS.win[0] + BUS.win[1]) / 2, along), y: -BUS.floor, scale: S, facing: lerp(180, 12, along), t, walk: t * 1.6, outfit: s.outfit, smile: along, light: null });
         },
       },
+      ...(W2 ? {
+        lamps: this.lamps, there, prints: this.prints.filter((p) => t > p.t).map((p) => ({ x: p.x, y: p.y, age: t - p.t, run: p.run })),
+        breath: this.breath.filter((b) => t > b.t && t - b.t < 1.3).map((b) => ({ x: b.x, y: b.y, age: t - b.t, dir: b.dir })),
+      } : {}),
     });
-    // (in the corridor the bright windows are behind them)
-    if (openings(inView(cam)).length) shade(g, (x) => { camera(x, cam, 1); two(x, SHADE); });
-    // the light verse 1 ended in goes back toward the sun, and the corridor is there (VERSE1_WASH)
-    const leak = (1 - prog(q, 0, T.clear)) ** 1.4, flat = smoothstep(0.3, 1, leak);
-    lightLeak(g, leak, { from: -0.2, t, ...VERSE1_WASH });
-    if (flat > 0) { c.fillStyle = rgba(VERSE1_WASH.under, flat); c.fillRect(0, 0, W, H); }
-    this.light = Math.min(this.light, 2.2 * (1 - smoothstep(0.2, 0.95, leak)));
+    // (in the corridor the bright windows are behind them. In chorus 2 the lamps and the lit windows are, all the way: drawWay sees to that)
+    if (!W2 && openings(inView(cam)).length) shade(g, (x) => { camera(x, cam, 1); two(x, SHADE); });
+    if (W2) {
+      // the scarf is round his neck: it is warm, as it was under her hand in verse 2
+      if (got.him && glad > 0) {
+        const z = cam.zoom!, [nx, ny] = seen(cam, got.him.neck), k = prog(q, T.on, T.on + 0.7);
+        glow(g, nx, ny + 12 * z, 160 * z, { color: 'blush', alpha: 0.22 * glad * (1 - sine(prog(q, T.on + 1.2, T.on + 2.4))) });
+        sparkle(g, nx - 34 * z, ny - 6 * z, 36 * z, Math.sin(Math.PI * k) ** 0.7, { rot: 0.5 * k });
+      }
+    } else {
+      // the light verse 1 ended in goes back toward the sun, and the corridor is there (VERSE1_WASH)
+      const leak = (1 - prog(q, 0, T.clear)) ** 1.4, flat = smoothstep(0.3, 1, leak);
+      lightLeak(g, leak, { from: -0.2, t, ...VERSE1_WASH });
+      if (flat > 0) { c.fillStyle = rgba(VERSE1_WASH.under, flat); c.fillRect(0, 0, W, H); }
+      this.light = Math.min(this.light, 2.2 * (1 - smoothstep(0.2, 0.95, leak)));
+    }
     if (bare) return;
-    // the lines, over their heads, in two rows taken in turn. 1: in her handwriting, drifting with the camera
-    const drift = 14 * Math.sin(t * 0.45), wavy = (k: number, a: number) => a * Math.sin(t * 0.9 + k * 0.7);
-    // (the line starts on the cut: the characters that wait come up out of the light, they do not start there)
-    this.say(c, g, L[0]!, t, { x: 0, y: 0, size: 86, style: 'hand', until: this.at(T.run[0]! + 0.55), path: (_u, k) => ({ x: 564 + 88 * k + drift, y: ROW_A + wavy(k, 9) }), each: (ch) => { if (ch.sung <= 0) ch.alpha = smoothstep(0, 0.45, q); } });
+    // the lines, over their heads, in two rows taken in turn (in the evening they settle to paper). 1: in her handwriting, drifting with the camera
+    const drift = 14 * Math.sin(t * 0.45), wavy = (k: number, a: number) => a * Math.sin(t * 0.9 + k * 0.7), say = (line: Line, how: LyricOpts) => this.say(c, g, line, t, W2 ? { dark: true, ...how } : how);
+    // (the line starts on the cut: the characters that wait come up out of the light, they do not start there. In chorus 2
+    // they wait until the lamps have gone up past them)
+    say(L[0]!, { x: 0, y: 0, size: 86, style: 'hand', until: this.at(T.run[0]! + 0.55), path: (_u, k) => ({ x: (W2 ? 608 : 564) + 88 * k + drift, y: ROW_A + wavy(k, 9) }), each: (ch) => { if (ch.sung <= 0) ch.alpha = W2 ? smoothstep(0.95, 1.35, q) : smoothstep(0, 0.45, q); } });
     // 2: its characters skip along, as the two of them do
-    this.say(c, g, L[1]!, t, {
+    say(L[1]!, {
       x: 0, y: 0, size: 84, hold: 0.9, path: (_u, k) => ({ x: 454 + 92 * k, y: ROW_B - 8 * Math.sin(k * 0.9) }),
       each: (ch) => { ch.y -= 34 * Math.sin(Math.PI * clamp(ch.since / 0.34)) ** 0.8 + (ch.since > 0.34 ? 8 * Math.abs(Math.sin(Math.PI * (q * 1.5 + ch.k * 0.5))) : 0); },
     });
     // 3: written by hand again, at a walk
-    this.say(c, g, L[2]!, t, { x: 0, y: 0, size: 80, style: 'hand', hold: 0.9, path: (_u, k) => ({ x: 456 + 84 * k + drift, y: ROW_A + wavy(k, 7) }) });
+    say(L[2]!, { x: 0, y: 0, size: 80, style: 'hand', hold: 0.9, path: (_u, k) => ({ x: 456 + 84 * k + drift, y: ROW_A + wavy(k, 7) }) });
     // 4: a glint over each character as it is sung, like the marks on the pavement
-    for (const ch of this.say(c, g, L[3]!, t, { x: 0, y: 0, size: 84, until: this.at(T.stop + 0.4), path: (_u, k) => ({ x: 638 + 92 * k, y: ROW_B + wavy(k, 5) }) })) {
+    for (const ch of say(L[3]!, { x: 0, y: 0, size: 84, until: this.at(T.stop + 0.4), path: (_u, k) => ({ x: 638 + 92 * k, y: ROW_B + wavy(k, 5) }) })) {
       if (ch.since > 0 && ch.since < 0.6) sparkle(g, ch.x + 36, ch.y - 48, 24, Math.sin(Math.PI * (ch.since / 0.6)), { rot: ch.k });
     }
-    // 5: in the sky over the bus
-    this.say(c, g, L[4]!, t, { x: 0, y: 0, size: 86, style: 'hand', path: (_u, k) => ({ x: 564 + 88 * k, y: ROW_A + wavy(k, 7) }) });
+    // 5: in the sky over the bus (chorus 2: clear of the lamp at the stop)
+    say(L[4]!, { x: 0, y: 0, size: 86, style: 'hand', path: (_u, k) => ({ x: (W2 ? 650 : 564) + 88 * k, y: ROW_A + wavy(k, 7) }) });
   }
 
   // ------------------------------------------------------------------ 6, 7: her room that night
   private room(c: Ctx, g: Ctx, t: number, q: number) {
-    const T = this.T, L = this.L, wide = sine(prog(q, T.photos[0]! - 0.4, T.photos[0]! + 0.8));
+    const T = this.T, L = this.L, W2 = this.winter, wide = sine(prog(q, T.photos[0]! - 0.4, T.photos[0]! + 0.8));
     const cam: Cam = { zoom: lerp(1.45 + 0.05 * prog(q, this.cuts[0]!.at, T.photos[0]!), 1.3, wide), x: lerp(978, 960, wide) - W / 2, y: lerp(640, 600, wide) - H / 2 };
+    // (chorus 2: it snows; his 晚安 has come, and she is glad of it)
+    const came = W2 ? sine(prog(q, T.his + 0.2, T.his + 0.9)) : 0;
     let phone: V2 = [0, 0];
     drawRoom(c, g, {
-      t, cam, day: 0, sky: NIGHT_SKY, stars: 1, moon: [190, 252], moonlight: 1, sun: 0, turned: 0, falls: [], first: -1, snow: 0, frost: 0, month: 10, flip: 0,
+      t, cam, day: 0, sky: W2 ? SNOW_NIGHT : NIGHT_SKY, stars: W2 ? 0.35 : 1, moon: [190, 252], moonlight: W2 ? 0.8 : 1, sun: 0, turned: 0, falls: W2 ? [-1e3] : [], first: -1, snow: W2 ? 1 : 0, frost: 0, month: W2 ? 12 : 10, flip: 0,
+      ...(W2 ? { lies: 1 } : {}),
       her: (x) => {
-        const a = drawGirl(x, 'hold-phone', { x: ROOM.her, y: ROOM.bed + 6, scale: 1, facing: 90, t, outfit: this.season.outfit, blush: 0.9, smile: 0.4, light: [0.8, 0.1] });
+        const a = drawGirl(x, 'hold-phone', { x: ROOM.her, y: ROOM.bed + 6, scale: 1, facing: 90, t, outfit: W2 ? 'autumn' : this.season.outfit, blush: 0.9 + 0.1 * came, smile: 0.4 + 0.45 * came, light: [0.8, 0.1] });
         phone = [(a.handL[0] + a.handR[0]) / 2 + 2, a.handL[1] - 22];
         drawPhone(x, phone[0], phone[1], 1, -0.5, 0.85);
       },
@@ -293,6 +401,7 @@ export default class Chorus extends Scene {
     const caret = slot(said || Math.min(typed, L[5]!.chars.filter((ch) => ch.word && t >= ch.word.start).length));
     drawChat(c, g, {
       x: lerp(1470, 1672, wide), y: lerp(548, 632, wide), scale: lerp(1, 0.6, wide), tilt: 0.03, sent: ease.outBack(prog(q, T.sent, T.sent + 0.45)),
+      ...(W2 ? { his: ease.outBack(prog(q, T.his, T.his + 0.45)) } : {}),
       typed: (x) => {
         drawLyric(x, L[5]!, t, { x: 0, y: 0, size: 62, ghost: 0, path: (_u, k) => ({ x: slot(k)[0], y: slot(k)[1] }), each: (ch) => { if (ch.k >= typed) ch.alpha = 0; } });
         x.font = font(F.hand(500), 62); x.textAlign = 'center'; x.textBaseline = 'alphabetic'; x.fillStyle = rgba('ink');
@@ -309,7 +418,7 @@ export default class Chorus extends Scene {
     frames.forEach((fr, i) => {
       if (fr.k <= 0) return;
       const w = PHOTOS[i]!.w, card = (x: Ctx) => { x.translate(fr.x, fr.y); x.rotate(fr.rot); x.globalAlpha *= clamp(fr.k * 2.5); x.fillStyle = SHADE; x.fillRect(-w / 2, -w * 0.6, w, w * 1.2); };
-      drawPhoto(c, { x: fr.x, y: fr.y, w, rot: fr.rot, scale: 0.8 + 0.2 * ease.outBack(fr.k), alpha: clamp(fr.k * 2.5), img: shots[i]!, crop: PHOTOS[i]!.crop });
+      drawPhoto(c, { x: fr.x, y: fr.y, w, rot: fr.rot, scale: 0.8 + 0.2 * ease.outBack(fr.k), alpha: clamp(fr.k * 2.5), img: shots[i]!, crop: W2 ? CROPS2[i]! : PHOTOS[i]!.crop });
       shade(g, card);   // (the moon is behind them: it does not shine through)
     });
     drawLyric(c, L[6]!, t, {
@@ -323,38 +432,64 @@ export default class Chorus extends Scene {
     const T = this.T, n = this.L[5]!.chars.length;
     return q < T.erase[0]! ? n : Math.ceil(n * (1 - prog(q, T.erase[0]!, T.erase[1]!)));
   }
-  /** Three moments of the walk as she remembers them: each a whole frame of it, painted once, small, and kept. */
+  /** Three moments of the day as she remembers them: each a whole frame, painted once, small, and kept. */
   private photos(): HTMLCanvasElement[] {
-    return (this.kept ??= this.T.shots.map((q) => {
+    return (this.kept ??= this.T.shots.map((q, i) => {
       const k = 0.4, cv = document.createElement('canvas'), light = this.light;
       cv.width = Math.round(W * k * SCALE); cv.height = Math.round(H * k * SCALE);
-      this.walk(scaleContext2D(cv.getContext('2d')!, k * SCALE), scratch('unlit', 4).c, this.at(q), q, true);
+      const x = scaleContext2D(cv.getContext('2d')!, k * SCALE), unlit = scratch('unlit', 4).c;
+      if (this.winter && i === 0) this.stairs(x, unlit); else this.walk(x, unlit, this.at(q), q, true);
       this.light = light;
       return cv;
     }));
   }
+  /** Chorus 2: the stairs of verse 2 as she remembers them: everybody on the way down, and the two of them side by side. */
+  private stairs(c: Ctx, g: Ctx) {
+    const t = this.at(0), others: [number, number, boolean][] = [[-0.3, 11, false], [0.84, 9.5, true], [0.05, 8.2, true], [-0.66, 6.2, true], [0.62, 4.6, false], [-0.84, 2.4, false]];
+    drawStairs(c, g, { t, ride: 0.4 });
+    layer(c, { blur: 2.4 }, (x) => { for (const [X, j, boy] of others) drawWalker(x, { ...onStairs(X, j), boy, walk: j * 0.37, alpha: lerp(1, 0.55, clamp(j / 14)), streak: 0 }); });
+    // (as verse 2 has them there: in step, half a stair's width apart, and looking at each other)
+    const a = onStairs(-0.146, 0), b = onStairs(0.146, 0);
+    const her = drawGirl(c, 'walk', { x: a.x, y: a.y, scale: a.k, facing: 0, t, walk: 0.1, outfit: 'winter', wind: -0.25, headTurn: 22, smile: 0.8, blush: 1, shadow: 0.5 });
+    drawScarfEnd(c, her.pocket, her.scale, t, -0.25);
+    drawBoy(c, 'walk', { x: b.x, y: b.y, scale: b.k, facing: 0, t, walk: 0.1, outfit: 'winter', scarf: false, wind: -0.25, headTurn: -22, smile: 0.5, blush: 0.7, shadow: 0.5 });
+  }
 
   // ------------------------------------------------------------------ 8: the zipper pocket
   private bag(c: Ctx, g: Ctx, t: number, q: number) {
-    const T = this.T, line = this.L[7]!, from = this.cuts[1]!.at, s = BAG.scale, slow = prog(q, from, T.zipped + 1);
-    const cam: Cam = { zoom: 1 + 0.045 * slow, x: 12 * slow, y: 6 * slow };
-    // the pocket's zip: open until the line is in, shut on the downbeat. (The kit's bag: its pull runs from x0, open, to x1.)
-    const zip = 1 - ease.inOutCubic(prog(q, T.zipped - 0.5, T.zipped)), zy = BAG.y - 63 * s, x0 = BAG.x - 37 * s, x1 = BAG.x + 37 * s, pull: V2 = [lerp(x1, x0, zip) + 4, zy + 12 * s - 16];
+    const T = this.T, W2 = this.winter, line = this.L[7]!, from = this.cuts[1]!.at, s = BAG.scale, slow = prog(q, from, T.zipped + (W2 ? 0 : 1));
+    // (chorus 2: once the zip is shut the camera goes back from the bag to her desk under its lamp: CHORUS2_DESK)
+    const back = W2 ? sine(prog(q, T.back[0]!, T.back[1]!)) : 0, near: Cam = { zoom: 1 + 0.045 * slow, x: 12 * slow, y: 6 * slow }, far = CHORUS2_DESK.cam;
+    const cam: Cam = W2 ? { zoom: Math.exp(lerp(Math.log(near.zoom!), Math.log(far.zoom), back)), x: lerp(near.x!, far.x, back), y: lerp(near.y!, far.y, back) } : near;
+    // the pocket's zip: open until the line is in, shut on the downbeat (chorus 2: drawn open first, and shut on the
+    // beat before the downbeat). (The kit's bag: its pull runs from x0, open, to x1.)
+    const shut = ease.inOutCubic(prog(q, T.zipped - (W2 ? 0.42 : 0.5), T.zipped)), zip = (W2 ? ease.inOutCubic(prog(q, T.unzip[0]!, T.unzip[1]!)) : 1) * (1 - shut);
+    const zy = BAG.y - 63 * s, x0 = BAG.x - 37 * s, x1 = BAG.x + 37 * s, pull: V2 = [lerp(x1, x0, zip) + 4, zy + 12 * s - 16];
     // her hand brings the star, lowers it into the pocket and lets it go; comes back for the pull, draws it shut, and goes
     const away: V2 = [2060, -90], come = sine(prog(q, from - 0.2, T.star[0]! - 0.3)), put = prog(q, T.star[0]!, T.star[1]!), off = sine(prog(q, lerp(T.star[0]!, T.star[1]!, 0.62), T.star[1]! + 0.7));
-    const back = sine(prog(q, T.pull[0]!, T.pull[1]!)), gone = sine(prog(q, T.zipped + 0.1, T.zipped + 0.75));
+    const grip = sine(prog(q, T.pull[0]!, T.pull[1]!)), gone = sine(prog(q, T.zipped + 0.1, T.zipped + 0.75));
     const over: V2 = [lerp(away[0] - 60, BAG.x + 8, come), lerp(away[1], zy - 150, come)], star: V2 = [over[0], lerp(over[1], zy + 72, sine(put))];
     let hand: V2 = [over[0] + 24, lerp(over[1], zy + 72, sine(Math.min(put, 0.62))) - 36];
-    for (const [to, k] of [[away, off], [pull, back], [[away[0], away[1] + 260], gone]] as [V2, number][]) hand = [lerp(hand[0], to[0], k), lerp(hand[1], to[1], k)];
+    // (chorus 2: her other hand is at the zip all the while; this one lets the star go, presses the others down a
+    // little to make room for it, and goes)
+    const pat = W2 ? Math.sin(Math.PI * prog(q, T.pat[0]!, T.pat[1]!)) : 0, left = W2 ? sine(prog(q, T.pat[1]! - 0.1, T.pat[1]! + 0.75)) : 0;
+    if (W2) hand = [lerp(hand[0], away[0], left), lerp(hand[1] + 44 * pat, away[1], left)];
+    else for (const [to, k] of [[away, off], [pull, grip], [[away[0], away[1] + 260], gone]] as [V2, number][]) hand = [lerp(hand[0], to[0], k), lerp(hand[1], to[1], k)];
+    const rest: V2 = [640, 1500], came = sine(prog(q, from - 0.4, T.unzip[0]!)), went = sine(prog(q, T.zipped + 0.04, T.zipped + 0.36));
+    const other = { x: lerp(lerp(rest[0], pull[0], came), rest[0] + 120, went), y: lerp(lerp(rest[1], pull[1], came), rest[1], went), rot: -1.92 + 0.1 * (1 - zip), alpha: 1 - prog(q, T.zipped + 0.05, T.zipped + 0.26) };
+    // (the others make room: they are pressed down while today's star goes in, and stay a little lower for it)
+    const pile = Math.max(sine(prog(q, T.star[0]! + 0.25, T.star[1]!)) * (1 - 0.45 * sine(prog(q, T.star[1]!, T.pat[0]!))), pat) * (1 - 0.6 * left) + 0.25 * left;
     const shot = drawBagShot(c, g, {
-      t, cam, zip, hand: { x: hand[0], y: hand[1], rot: 0.12 + 0.2 * back },
+      t, cam, zip, hand: W2 && left >= 1 ? null : { x: hand[0], y: hand[1], rot: 0.12 + 0.2 * grip * (W2 ? 0 : 1) },
+      ...(W2 ? { other: other.alpha > 0 ? other : null, pile, room: { sharp: back, warm: 1 } } : {}),
       into: (x) => {
         if (put < 1) drawStar(x, star[0], star[1], 52, lerp(0.35, -0.25, sine(put)) + 0.08 * Math.sin(t * 2) * (1 - put));
         // the line, in the dark beside the bag; then its characters go one after the other into the pocket, after the star
         drawLyric(x, line, t, {
           x: 0, y: 0, size: 96, dark: true, path: (_u, k) => ({ x: 250 + 100 * (k % 5), y: k < 5 ? 318 : 452 }),
           each: (ch) => {
-            const u = sine(prog(q, T.flow + 0.045 * ch.k, T.flow + 0.045 * ch.k + 0.42)), v = 1 - u, mx = BAG.x + 10, my = zy + 44, cx = lerp(ch.x, mx, 0.55), cy = Math.min(ch.y, zy) - 200;
+            // (chorus 2: into what is still open of the pocket's mouth, as the zip comes)
+            const at = T.flow[ch.k]!, u = sine(prog(q, at, at + (W2 ? 0.4 : 0.42))), v = 1 - u, mx = W2 ? (pull[0] + x1) / 2 + 6 : BAG.x + 10, my = zy + 44, cx = lerp(ch.x, mx, 0.55), cy = Math.min(ch.y, zy) - 200;
             if (u <= 0) return;
             ch.x = v * v * ch.x + 2 * u * v * cx + u * u * mx; ch.y = v * v * ch.y + 2 * u * v * cy + u * u * my; ch.scale = lerp(1, 0.3, u); ch.angle = 0.6 * u;
           },
@@ -362,9 +497,14 @@ export default class Chorus extends Scene {
       },
     });
     // the pull lands: a glint on it, and the pocket keeps a little warmth
-    const landed = prog(q, T.zipped - 0.03, T.zipped + 0.55), [gx, gy] = seen(cam, shot.pull), [bx, by] = seen(cam, [BAG.x, zy + 130]);
-    sparkle(g, gx, gy, 84, Math.sin(Math.PI * landed) ** 0.7, { rot: 0.4 * landed });
-    glow(g, bx, by, 380, { color: 'blush', alpha: 0.22 * smoothstep(T.zipped - 0.2, T.zipped + 0.6, q) });
+    const landed = prog(q, T.zipped - 0.03, T.zipped + 0.55), [gx, gy] = seen(cam, shot.pull), [bx, by] = seen(cam, [BAG.x, zy + 130]), z = W2 ? cam.zoom! : 1;
+    sparkle(g, gx, gy, 84 * z, Math.sin(Math.PI * landed) ** 0.7, { rot: 0.4 * landed });
+    glow(g, bx, by, 380 * z, { color: 'blush', alpha: (W2 ? 0.3 * (1 - back) : 0.22) * smoothstep(T.zipped - 0.2, T.zipped + 0.6, q) });
+    if (!W2) return;
+    // chorus 2: what the open pocket shows glows a little too, and glints as it is seen
+    const [mx, my] = seen(cam, [(pull[0] + x1) / 2, zy]), seenAt = prog(q, T.unzip[1]! - 0.3, T.unzip[1]! + 0.55);
+    glow(g, mx, my, 300 * z, { color: 'blush', alpha: 0.26 * zip });
+    for (const [dx, dy, r, d] of [[-92, -34, 56, 0], [60, -52, 44, 0.12], [150, -20, 36, 0.22]]) sparkle(g, mx + dx! * z, my + dy! * z, r! * z, Math.sin(Math.PI * clamp((seenAt - d!) / 0.7)) ** 0.7, { rot: seenAt + d! * 4 });
   }
 
   // ------------------------------------------------------------------ the interlude: her window, as the season turns
@@ -383,5 +523,5 @@ export default class Chorus extends Scene {
     this.light = Math.min(this.light, 2.2 * (1 - smoothstep(T.end - 0.7, T.end - 0.15, q)));
   }
 
-  override dispose() { this.stage?.dispose(); this.later?.dispose(); }
+  override dispose() { this.stage.dispose(); }
 }

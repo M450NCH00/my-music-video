@@ -49,8 +49,8 @@ const BLUSH = mix('blush', 'rose', 0.4);
 // ------------------------------------------------------------------ poses
 export type PoseName =
   | 'stand' | 'walk' | 'run' | 'sit-write' | 'chin-on-hand' | 'pack-bag' | 'turn-smile' | 'wave'
-  | 'hold-phone' | 'hold-umbrella' | 'lean-closer' | 'face-each-other' | 'point' | 'talk' | 'pocket';
-export const POSES: PoseName[] = ['stand', 'walk', 'run', 'sit-write', 'chin-on-hand', 'pack-bag', 'turn-smile', 'wave', 'hold-phone', 'hold-umbrella', 'lean-closer', 'face-each-other', 'point', 'talk', 'pocket'];
+  | 'hold-phone' | 'hold-umbrella' | 'lean-closer' | 'face-each-other' | 'point' | 'talk' | 'pocket' | 'reach';
+export const POSES: PoseName[] = ['stand', 'walk', 'run', 'sit-write', 'chin-on-hand', 'pack-bag', 'turn-smile', 'wave', 'hold-phone', 'hold-umbrella', 'lean-closer', 'face-each-other', 'point', 'talk', 'pocket', 'reach'];
 /** A pose, or a blend of two (k = 0: `from`, k = 1: `to`) for easing from one into the other. */
 export type PoseArg = PoseName | { from: PoseName; to: PoseName; k: number };
 
@@ -209,6 +209,14 @@ const MAKE: Record<PoseName, (b: Build, q: Q) => Pose> = {
     const p = base(b), u = q.k;
     p.handR = mixv(p.handR, [-(b.sw + 1), HIP + 20, 13], u); p.elbowR = [-0.5, 0.1, -1];
     p.head = [0, 0.03 + 0.25 * u, 0];
+    return p;
+  },
+  // both hands out and up at the neck of somebody who stands facing it (a scarf put round it), the eyes up at them: k = 0 not yet .. 1 there
+  reach: (b, q) => {
+    const p = base(b), u = q.k;
+    p.handL = mixv(p.handL, [15, SH + 30, 150], u); p.handR = mixv(p.handR, [-15, SH + 30, 150], u);
+    p.elbowL = [0.7, -1, 0.1]; p.elbowR = [-0.7, -1, 0.1];
+    p.lean = 0.02 + 0.07 * u; p.head = [0, 0.03 - 0.14 * u, 0];
     return p;
   },
 };

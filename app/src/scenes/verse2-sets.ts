@@ -11,7 +11,7 @@ import {
   CHORUS1_FROST, VERSE2_LAMPS, camera, drawStudent, dustMotes, frost, glow, layer, lightShaft, paperScraps, scratch, snow,
   type Cam, type Ctx, type Shaft, type V2,
 } from './_love';
-import { FLOOR, seen } from './chorus-sets';
+import { FLOOR, bare, seen } from './chorus-sets';
 
 // (the kit's own blends, _love-rig.ts and _love-props.ts: her coat, the scarf, wood)
 const BEIGE = mix(mix('paper', 'gold', 0.4), 'ink', 0.08), BEIGE_LOW = mix(mix('paper', 'peach', 0.5), 'ink', 0.18);
@@ -56,17 +56,6 @@ function restFrost() {
   return cv;
 }
 
-/** A bare tree: a branch from (x, y), `len` long and `a` rad off upright, and the smaller ones it carries. */
-function bare(c: Ctx, x: number, y: number, len: number, a: number, w: number, seed: number, level = 0) {
-  const x1 = x + Math.sin(a) * len, y1 = y - Math.cos(a) * len;
-  c.lineWidth = w; c.beginPath(); c.moveTo(x, y); c.lineTo(x1, y1); c.stroke();
-  if (level > 3 || len < 14) return;
-  const n = level ? 2 : 3;
-  for (let i = 0; i < n; i++) {
-    const r = (k: number) => hash(seed, level, i, k), at = level ? 0.45 + 0.5 * r(1) : 0.52 + 0.46 * (i / (n - 1));
-    bare(c, lerp(x, x1, at), lerp(y, y1, at), len * (0.5 + 0.22 * r(2)), a + (i % 2 ? 1 : -1) * (0.42 + 0.4 * r(3)), w * 0.62, seed * 7 + i + 1, level + 1);
-  }
-}
 /** What is outside the corridor's windows, too far off to be seen moving (a layer `depth` away, kept): the yard under snow, the school's other wing across it, bare trees. */
 const FAR = { x: -340, y: 180, w: 2560, h: 660, res: 0.6, depth: 0.3 };
 let far: HTMLCanvasElement | null = null;
