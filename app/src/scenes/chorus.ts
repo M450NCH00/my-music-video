@@ -6,15 +6,15 @@
 //   the way home, one shot from the side that follows the two of them (drawWay):
 //     1  等你下课一起走好不好        the light verse 1 ended in clears off the corridor (VERSE1_WASH); she runs in from the
 //                                   left, catches him up and falls into step
-//     2  从黑板到校门只要一条小跑    a little run: the corridor's windows, the steps, the yard, the gate go by; the dotted
-//                                   path draws itself along the ground ahead of them, from 黑板 to 校门; the line skips
+//     2  从黑板到校门只要一条小跑    a little run: the corridor's windows, the steps, the yard, the gate go by, dust at
+//                                   their heels; the line's characters skip along over their heads
 //     3  你说要回家我就陪你到车站口  out in the street, at a walk again: the low shops across the road, the sun going down
 //     4  多走几步都算偷到            her steps get small; each of them leaves a gold star on the pavement
 //     5  等你下课再见一面就好        the bus stop: he gets on, waves from his window, and she waves the bus out of sight
 //   her room that night (drawRoom):
 //     6  把今天没说完的写在晚安后    her 晚安 is sent; the line is what she types after it, a character as each is sung
 //     7  慢慢走 慢慢讲               photographs of the walk come up round her, half the line written under one and half
-//                                   under another; she takes the message out again, slowly, and types it again
+//                                   under another; she takes the message out again, slowly, and types 明天见噢 instead
 //   her school bag, close up (drawBagShot):
 //     8  把喜欢藏在书包拉链口        a folded paper star goes into the front pocket, the line after it, and the zip is
 //                                   shut on the downbeat
@@ -26,6 +26,7 @@ import * as THREE from 'three';
 import { Scene, type Frame } from '../engine/scene';
 import { SCALE, W, H, scaleContext2D } from '../engine/gl';
 import { mix, rgba } from '../engine/palette';
+import { CJK_MID, F, font } from '../engine/type';
 import type { Line } from '../engine/lyrics';
 import { clamp, ease, keys, lerp, prog, smoothstep } from '../engine/util';
 import {
@@ -50,6 +51,8 @@ const ROW_A = 136, ROW_B = 232;
 const PHOTOS: { x: number; y: number; w: number; rot: number; crop: [number, number, number] }[] = [
   { x: 372, y: 300, w: 330, rot: -0.07, crop: [960, 640, 900] }, { x: 812, y: 236, w: 286, rot: 0.05, crop: [1010, 650, 900] }, { x: 1226, y: 322, w: 322, rot: 0.085, crop: [930, 560, 960] },
 ];
+/** What she types in the end, in place of all she did not say. (Not a line of the song: it is plain ink, and 噢 is in the fonts for it: analysis/make_fonts.py.) */
+const NOTE = '明天见噢';
 /** The sky in her window, top to bottom: at night, at dawn, by day, and when the snow comes. */
 const NIGHT_SKY = [mix('navy', 'ink', 0.1), mix('navy', 'dusk', 0.35), mix('dusk', 'navy', 0.3)], DAWN_SKY = [mix('dusk', 'sky', 0.3), mix('blush', 'peach', 0.5), mix('gold', 'peach', 0.4)];
 const DAY_SKY = [mix('sky', 'paper', 0.15), mix('sky', 'paper', 0.5), mix('paper', 'gold', 0.3)], SNOW_SKY = [mix('frost', 'sky', 0.3), mix('frost', 'paper', 0.5), mix('paper', 'frost', 0.25)];
@@ -82,6 +85,8 @@ export default class Chorus extends Scene {
   private xh = new Float64Array(QN); private xb = new Float64Array(QN); private ph = new Float64Array(QN); private pb = new Float64Array(QN);
   /** The star marks of her small steps: where each foot comes down (x), and when (beat). */
   private stars: { x: number; q: number }[] = [];
+  /** The dust of their run: where each foot comes down (x, y of the way), and when (s). */
+  private dust: { x: number; y: number; t: number }[] = [];
   /** The frames the photographs are prints of. */
   private kept: HTMLCanvasElement[] | null = null;
   /** How bright the light layer is added this frame: 2.2 as everywhere, but for the first frames (VERSE1_WASH) and the last (CHORUS1_FROST). */
@@ -108,9 +113,9 @@ export default class Chorus extends Scene {
       tiny: [from(3) - 0.1, from(3) + 0.35], stop,
       // 5: the bus comes in behind them and has stopped a beat on; he looks back at her, gets on, is at his window on 见; the bus leaves on 一面
       bus: [stop - 0.35, halt], look: [from(4) - 0.1, from(4) + 0.3], board: [halt + 0.1, sung(4, 4) + 0.25], window: sung(4, 5), leave: sung(4, 6) + 0.15,
-      // 6, 7: her 晚安 goes as the room comes up; over 慢慢走 she takes the message out again, over 慢慢讲 she types it again; the photographs come up one after the other
-      sent: room - 0.15, erase: [from(6) + 0.05, sung(6, 2) + 0.4], again: [sung(6, 3) - 0.1, to(6) - 0.15], photos: [from(6) - 0.65, from(6) + 0.3, sung(6, 3) - 0.75],
-      // (what they are photographs of: the corridor, the dotted path at the gate, his wave from the bus)
+      // 6, 7: her 晚安 goes as the room comes up; over 慢慢走 she takes the message out again, and into 慢慢讲 she types NOTE instead; the photographs come up one after the other
+      sent: room - 0.15, erase: [from(6) + 0.05, sung(6, 2) + 0.4], again: [sung(6, 3) - 0.45, sung(6, 4) + 0.3], photos: [from(6) - 0.65, from(6) + 0.3, sung(6, 3) - 0.75],
+      // (what they are photographs of: the corridor, the gate as they run out of it, his wave from the bus)
       shots: [sung(0, 9) + 0.2, to(1) - 0.2, sung(4, 6) + 0.35],
       // 8: the star goes in on 藏; her hand is back for the pull on 拉链; the line goes in after the star, and the zip is shut on the downbeat
       star: [sung(7, 3) - 0.12, sung(7, 3) + 0.5], pull: [sung(7, 7) - 0.25, sung(7, 8) + 0.1], flow: to(7) - 0.85, zipped,
@@ -132,6 +137,11 @@ export default class Chorus extends Scene {
     const at = (a: Float64Array, x: number) => a[Math.round((x - Q0) / DQ)]!, shift = (a: Float64Array, d: number) => { for (let i = 0; i < QN; i++) a[i]! += d; };
     shift(this.xh, WAY.her - at(this.xh, stop + 0.5)); shift(this.xb, WAY.him - at(this.xb, stop + 0.5));
     shift(this.pb, -at(this.pb, 0)); shift(this.ph, 0.5 - ((at(this.ph, T.step[1]! + 0.6) - at(this.pb, T.step[1]! + 0.6)) % 1));
+    // their run: a little dust where each foot comes down (in the kit's run a foot lands 0.14 and 0.64 of the way through a stride, well ahead of the body)
+    for (const [xs, ps, him] of [[this.xh, this.ph, false], [this.xb, this.pb, true]] as [Float64Array, Float64Array, boolean][]) for (let i = 1; i < QN; i++) {
+      const x = Q0 + i * DQ, fx = xs[i]! + 70 * S;
+      if (x > 0 && run(this.speed(x, him)) > 0.35 && Math.floor(ps[i]! * 2 - 0.28) !== Math.floor(ps[i - 1]! * 2 - 0.28)) this.dust.push({ x: fx, y: groundAt(fx) + (him ? 0 : 12), t: this.at(x) });
+    }
     // her small steps: a star where each foot comes down
     for (let i = 1; i < QN; i++) {
       const x = Q0 + i * DQ;
@@ -221,9 +231,8 @@ export default class Chorus extends Scene {
       });
     };
     const two = (x: Ctx, silhouette?: string) => { he(x, silhouette); she(x, silhouette); };
-    const reach = q < T.run[0]! - 0.35 ? WAY.board : Math.min(WAY.board + 1500 * (q - T.run[0]! + 0.35), Math.max(xh, xb) + 520);
     drawWay(c, g, {
-      t, cam, season: s, late: smoothstep(T.run[0]!, T.stop + 2.5, q), path: reach, labels: [smoothstep(T.run[0]! - 0.35, T.run[0]! + 0.1, q), clamp((reach - WAY.gate + 60) / 160)],
+      t, cam, season: s, late: smoothstep(T.run[0]!, T.stop + 2.5, q), dust: this.dust.filter((d) => t > d.t && t - d.t < 0.62).map((d) => ({ x: d.x, y: d.y, age: t - d.t })),
       stars: this.stars.map((st) => ({ x: st.x, age: t - this.at(st.q) })), two,
       bus: q <= T.bus[0]! ? undefined : {
         x: busX, door: doors,
@@ -277,13 +286,19 @@ export default class Chorus extends Scene {
     const [px, py] = seen(cam, phone);
     glow(c, px, py, 330 * cam.zoom!, { color: mix('paper', 'sky', 0.35), alpha: 0.3 });
     phoneGlow(g, px, py, 0.6 * cam.zoom!, 0.5);
-    // her phone's screen, large beside her: the line is what she types, a character as each is sung
-    const typed = this.typed(q), F = CHAT.field, slot = (k: number): V2 => [F.x + (k < 7 ? k : k - 7) * F.step, k < 7 ? F.y : F.y + F.lead];
-    const last = Math.min(typed, L[5]!.chars.filter((ch) => ch.word && t >= ch.word.start).length), caret = slot(last);
+    // her phone's screen, large beside her: the line is what she types, a character as each is sung; once it is
+    // sung she takes it out again, and types NOTE instead
+    const typed = this.typed(q), said = Math.min(NOTE.length, Math.floor((NOTE.length + 1) * prog(q, T.again[0]!, T.again[1]!)));
+    const field = CHAT.field, slot = (k: number): V2 => [field.x + (k < 7 ? k : k - 7) * field.step, k < 7 ? field.y : field.y + field.lead];
+    const caret = slot(said || Math.min(typed, L[5]!.chars.filter((ch) => ch.word && t >= ch.word.start).length));
     drawChat(c, g, {
       x: lerp(1470, 1672, wide), y: lerp(548, 632, wide), scale: lerp(1, 0.6, wide), tilt: 0.03, sent: ease.outBack(prog(q, T.sent, T.sent + 0.45)),
-      typed: (x) => { drawLyric(x, L[5]!, t, { x: 0, y: 0, size: 62, ghost: 0, path: (_u, k) => ({ x: slot(k)[0], y: slot(k)[1] }), each: (ch) => { if (ch.k >= typed) ch.alpha = 0; } }); },
-      caret: [caret[0] - F.step / 2 + 3, caret[1]], blink: smoothstep(-0.3, 0.3, Math.sin(t * 7)),
+      typed: (x) => {
+        drawLyric(x, L[5]!, t, { x: 0, y: 0, size: 62, ghost: 0, path: (_u, k) => ({ x: slot(k)[0], y: slot(k)[1] }), each: (ch) => { if (ch.k >= typed) ch.alpha = 0; } });
+        x.font = font(F.hand(500), 62); x.textAlign = 'center'; x.textBaseline = 'alphabetic'; x.fillStyle = rgba('ink');
+        for (let k = 0; k < said; k++) x.fillText(NOTE[k]!, slot(k)[0], slot(k)[1] + CJK_MID * 62);
+      },
+      caret: [caret[0] - field.step / 2 + 3, caret[1]], blink: smoothstep(-0.3, 0.3, Math.sin(t * 7)),
     });
     // the photographs of the walk come up round her; the line is written under two of them, half and half
     if (q <= T.photos[0]! - 0.05) return;
@@ -303,10 +318,10 @@ export default class Chorus extends Scene {
       each: (ch) => { ch.alpha = clamp(frames[ch.k < 3 ? 0 : 2]!.k * 2.5); },
     });
   }
-  /** How many characters of her message are in the field: all of them, until she takes them out one by one, and types them again. */
+  /** How many characters of the line are in the field: all of them, until she takes them out one by one. */
   private typed(q: number) {
     const T = this.T, n = this.L[5]!.chars.length;
-    return q < T.erase[0]! ? n : q < T.again[0]! ? Math.ceil(n * (1 - prog(q, T.erase[0]!, T.erase[1]!))) : Math.floor(n * prog(q, T.again[0]!, T.again[1]!));
+    return q < T.erase[0]! ? n : Math.ceil(n * (1 - prog(q, T.erase[0]!, T.erase[1]!)));
   }
   /** Three moments of the walk as she remembers them: each a whole frame of it, painted once, small, and kept. */
   private photos(): HTMLCanvasElement[] {

@@ -10,7 +10,7 @@ import { mix, rgba } from '../engine/palette';
 import { F, font } from '../engine/type';
 import { clamp, hash, lerp, smoothstep, TAU } from '../engine/util';
 import {
-  CHORUS1_FROST, camera, dottedPath, drawBag, dustMotes, drawStar, frost, glow, layer, leaves, lightShaft, petals, snow, sparkle,
+  CHORUS1_FROST, camera, drawBag, dustMotes, drawStar, frost, glow, layer, leaves, lightShaft, petals, snow, sparkle,
   type Cam, type Ctx, type Outfit, type Shaft, type V2,
 } from './_love';
 
@@ -54,10 +54,10 @@ export const SEASONS: Record<number, Season> = {
 /** How large the two of them are on the way; the corridor's floor (y); how much lower the yard and the street lie. */
 export const S = 0.92, FLOOR = 925, DROP = 300, GROUND = FLOOR + DROP;
 /**
- * Along the way (x, at the depth of the two): where the dotted path starts, the top of the steps (the corridor
- * ends there), their foot, the gate, the sign of the bus stop, where she and he stop, and the door of the bus.
+ * Along the way (x, at the depth of the two): the top of the steps (the corridor ends there), their foot, the gate,
+ * the sign of the bus stop, where she and he stop, and the door of the bus.
  */
-export const WAY = { board: 380, steps: 1500, yard: 1995, gate: 3050, sign: 4150, her: 4390, him: 4590, door: 4660 } as const;
+export const WAY = { steps: 1500, yard: 1995, gate: 3050, sign: 4150, her: 4390, him: 4590, door: 4660 } as const;
 /** The floor under somebody at x: the corridor's, the steps (taken as a slope), the yard's. */
 export const groundAt = (x: number) => FLOOR + DROP * clamp((x - WAY.steps + 45) / (WAY.yard - WAY.steps + 45));
 /**
@@ -163,19 +163,56 @@ function yard(c: Ctx, [x0, x1]: V2, s: Season) {
 }
 
 // ------------------------------------------------------------------ the way home: the street's far side
-const SIGNS = ['书', '面', '果', '包子'];
-/** A low shop front standing on (x, base): its sign, its striped awning, its window lit from inside, its door. */
+/**
+ * What a shop sells, as a small picture round (x, y), about 54 px wide at s = 1: 0 a book, 1 a bowl of noodles,
+ * 2 fruit, 3 steamed buns. (The shops say what they are in pictures: nothing is written on them.)
+ */
+function goods(c: Ctx, kind: number, x: number, y: number, s = 1) {
+  const blue = mix('sky', 'navy', 0.3), stick = mix('peach', 'ink', 0.45);
+  const line = (pts: number[], col: string, w: number) => { c.strokeStyle = col; c.lineWidth = w; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath(); for (let i = 0; i < pts.length; i += 2) { if (i) c.lineTo(pts[i]!, pts[i + 1]!); else c.moveTo(pts[i]!, pts[i + 1]!); } c.stroke(); };
+  const steam = (sx: number) => line([sx, -13, sx + 4, -18, sx - 2, -23, sx + 2, -28], rgba('ink', 0.22), 2.2);
+  c.save(); c.translate(x, y); c.scale(s, s);
+  if (kind === 0) {
+    // an open book: its cover, its two pages, a few lines on them
+    c.fillStyle = blue; c.beginPath(); c.roundRect(-26, -12, 52, 30, 3); c.fill();
+    c.fillStyle = rgba('paper'); poly(c, [[-23, -15], [0, -10], [0, 14], [-23, 10]]); c.fill(); poly(c, [[23, -15], [0, -10], [0, 14], [23, 10]]); c.fill();
+    for (const sg of [-1, 1]) for (let i = 0; i < 3; i++) line([sg * 5, -4 + i * 6, sg * 18, -6.5 + i * 6], rgba('ink', 0.26), 1.8);
+    line([0, -10, 0, 14], rgba('ink', 0.3), 1.8);
+  } else if (kind === 1) {
+    // a bowl of noodles, the chopsticks in it, steam over it
+    steam(-9); steam(3);
+    line([8, -6, 27, -24], stick, 3); line([13, -5, 30, -19], stick, 3);
+    c.fillStyle = mix('gold', 'paper', 0.25); c.beginPath(); c.ellipse(0, -3, 22, 8, 0, 0, TAU); c.fill();
+    c.fillStyle = blue; c.beginPath(); c.moveTo(-25, -3); c.bezierCurveTo(-23, 22, 23, 22, 25, -3); c.closePath(); c.fill();
+    c.fillStyle = rgba('paper', 0.8); c.fillRect(-16, 6, 32, 3);
+  } else if (kind === 2) {
+    // fruit: an apple with its stalk and leaf, an orange beside it
+    c.fillStyle = mix('gold', 'peach', 0.45); c.beginPath(); c.arc(14, 6, 13, 0, TAU); c.fill();
+    c.fillStyle = mix('peach', 'rose', 0.42); c.beginPath(); c.arc(-9, 3, 16, 0, TAU); c.fill();
+    c.fillStyle = rgba('paper', 0.35); c.beginPath(); c.ellipse(-15, -3, 4, 6, 0.5, 0, TAU); c.fill();
+    line([-9, -12, -7, -19], stick, 2.5);
+    c.fillStyle = mix('gold', 'ink', 0.3); c.beginPath(); c.ellipse(0, -19, 7, 3.5, -0.5, 0, TAU); c.fill();
+  } else {
+    // two steamed buns in their basket, steam over them
+    steam(-7); steam(7);
+    for (const bx of [-12, 12]) { c.fillStyle = rgba('paper'); c.beginPath(); c.ellipse(bx, 7, 12.5, 15, 0, Math.PI, TAU); c.fill(); c.strokeStyle = rgba('ink', 0.3); c.lineWidth = 1.8; c.stroke(); line([bx - 4, -3, bx, -8, bx + 4, -3], rgba('ink', 0.3), 1.6); }
+    c.fillStyle = mix('gold', 'ink', 0.28); c.beginPath(); c.roundRect(-28, 6, 56, 14, 4); c.fill();
+    c.fillStyle = rgba('paper', 0.35); c.fillRect(-28, 11, 56, 2.5);
+  }
+  c.restore();
+}
+/** A low shop front standing on (x, base): its sign (a picture of what it sells), its striped awning, its window lit from inside with the same in it, its door. */
 function shop(c: Ctx, x: number, base: number, w: number, h: number, i: number) {
   const tints = [mix('paper', 'peach', 0.32), mix('paper', 'blush', 0.5), mix('paper', 'sky', 0.4), mix('paper', 'gold', 0.42)], stripes = [rgba('peach'), mix('blush', 'rose', 0.15), mix('sky', 'navy', 0.1), mix('gold', 'peach', 0.3)];
   const wall = tints[i % 4]!, top = base - h, ay = top + 84, n = Math.round(w / 44), wy = ay + 66, wh = base - 26 - wy;
   fillV(c, top, base, wall, mix(wall, 'ink', 0.12)); c.fillRect(x, top, w, h + 60);
   c.fillStyle = mix(mix('peach', 'ink', 0.4), 'navy', 0.1); c.fillRect(x - 8, top - 16, w + 16, 20);
   c.fillStyle = rgba('paper', 0.92); c.beginPath(); c.roundRect(x + 30, top + 16, w - 60, 56, 6); c.fill();
-  c.font = font(F.hand(500), 42); c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillStyle = rgba('ink', 0.78);
-  c.fillText(SIGNS[i % 4]!, x + w / 2, top + 59);
+  goods(c, i % 4, x + w / 2, top + 48);
   for (let j = 0; j < n; j++) { c.fillStyle = j % 2 ? rgba('paper') : stripes[(i + 1) % 4]!; poly(c, [[x + 8 + ((w - 16) * j) / n, ay], [x + 8 + ((w - 16) * (j + 1)) / n, ay], [x - 14 + ((w + 28) * (j + 1)) / n, ay + 46], [x - 14 + ((w + 28) * j) / n, ay + 46]]); c.fill(); }
   c.fillStyle = rgba('ink', 0.1); c.fillRect(x - 14, ay + 46, w + 28, 7);
   c.fillStyle = mix(mix('peach', 'ink', 0.3), mix('gold', 'paper', 0.3), 0.8); c.fillRect(x + 26, wy, w * 0.52, wh);
+  for (const u of [0.13, 0.39]) goods(c, i % 4, x + 26 + w * u, wy + wh * 0.5 + 8, Math.min(0.9, wh / 62));
   c.strokeStyle = rgba('paper', 0.9); c.lineWidth = 5; c.strokeRect(x + 26, wy, w * 0.52, wh);
   c.beginPath(); c.moveTo(x + 26 + w * 0.26, wy); c.lineTo(x + 26 + w * 0.26, wy + wh); c.stroke();
   c.fillStyle = mix(wall, 'ink', 0.32); c.fillRect(x + w - 104, wy - 8, 74, base - wy + 8);
@@ -345,26 +382,31 @@ function bus(c: Ctx, o: BusOpts) {
 }
 
 // ------------------------------------------------------------------ the way home: the picture
-/** The dotted path (TREATMENT, motif 5): from the blackboard to the gate, and on to the bus stop. */
-const PATH: V2[] = Array.from({ length: 30 }, (_, i) => { const x = WAY.board + i * 138; return [x, groundAt(x) + 34 + 7 * Math.sin(i * 1.7)] as V2; });
-/** One of its two small labels, with its mark: a ring where it starts, a cross where it ends. */
-function label(c: Ctx, text: string, x: number, k: number, end: boolean) {
-  if (k <= 0.01) return;
-  const y = groundAt(x) + 34;
-  c.save(); c.globalAlpha *= k; c.strokeStyle = rgba('ink', 0.6); c.lineWidth = 4; c.lineCap = 'round'; c.beginPath();
-  if (end) { c.moveTo(x - 11, y - 11); c.lineTo(x + 11, y + 11); c.moveTo(x + 11, y - 11); c.lineTo(x - 11, y + 11); } else c.arc(x, y, 11, 0, TAU);
-  c.stroke();
-  c.font = font(F.hand(500), 40); c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillStyle = rgba('ink', 0.74);
-  c.fillText(text, x, y + 62);
-  c.restore();
+/** The dust a running foot raises where it comes down (x, y), `age` s ago: a few pale puffs that trail behind, lift a little, and are gone. */
+function puff(c: Ctx, x: number, y: number, age: number) {
+  const life = 0.62, u = age / life, out = 1 - Math.exp(-4 * age), fade = (1 - u) ** 1.3, quick = 1 - age / 0.26;
+  if (age <= 0 || u >= 1) return;
+  // (and the air behind the heel: two short streaks, gone at once)
+  if (quick > 0) {
+    c.strokeStyle = rgba('ink', 0.24 * quick); c.lineWidth = 3; c.lineCap = 'round'; c.beginPath();
+    for (const [dy, len] of [[-12, 46], [-30, 30]] as V2[]) { c.moveTo(x - 30 - 90 * age, y + dy); c.lineTo(x - 30 - 90 * age - len, y + dy); }
+    c.stroke();
+  }
+  // (each puff soft-edged, pale over a little of its own shade, so that it shows on a pale floor too)
+  for (let j = 0; j < 3; j++) for (const [dx, col, a] of [[3, mix('peach', 'ink', 0.22), 0.34], [0, rgba('paper'), 0.95]] as [number, string, number][]) {
+    const px = x - (10 + 24 * j) * out - 26 * age + dx, py = y - 10 - (5 + 11 * j) * out + dx * 1.4, r = (19 + 9 * j) * (0.55 + 1.15 * Math.sqrt(u));
+    const g = c.createRadialGradient(px, py, 0, px, py, r);
+    g.addColorStop(0, rgba(col, a * fade)); g.addColorStop(0.5, rgba(col, a * 0.72 * fade)); g.addColorStop(1, rgba(col, 0));
+    c.fillStyle = g; c.fillRect(px - r, py - r, r * 2, r * 2);
+  }
 }
 
 export interface WayOpts {
   t: number; cam: Cam; season: Season;
   /** 0 as they leave the classroom .. 1 at the bus stop: the afternoon going down to sunset. */
   late: number;
-  /** How far along the way the dotted path has drawn itself (x), and how much of its two labels is there (0..1 each). */
-  path: number; labels: V2;
+  /** The dust their feet raise as they run: where each came down (x, y of the way), and how long ago (s). */
+  dust: { x: number; y: number; age: number }[];
   /** The star marks her small steps leave on the pavement: where (x), and how long ago (s; not yet if negative). */
   stars: { x: number; age: number }[];
   bus?: BusOpts;
@@ -388,10 +430,9 @@ export function drawWay(c: Ctx, g: Ctx, o: WayOpts) {
   corridor(c, view);
   if (o.bus) bus(c, o.bus);
   if (view[1] > WAY.sign - 100 && view[0] < WAY.sign + 100) busStop(c);
-  dottedPath(c, PATH, (o.path - WAY.board) / (PATH[PATH.length - 1]![0] - WAY.board), { alpha: 0.5, gap: 26, width: 5 });
-  label(c, '黑板', WAY.board, o.labels[0], false); label(c, '校门', WAY.gate, o.labels[1], true);
   for (const st of o.stars) if (st.age > 0) { c.save(); c.translate(st.x, GROUND + 30); c.scale(1, 0.55); drawStar(c, 0, 0, 16 * (1 + 0.5 * Math.sin(Math.PI * clamp(st.age / 0.4))), 0.3 * Math.sin(st.x), { color: rgba('gold') }); c.restore(); }
   o.two(c);
+  for (const d of o.dust) puff(c, d.x, d.y, d.age);
   s.air(c, t, { x: WAY.steps, y: GROUND - 1000, w: 4600, h: 1060 });
   c.restore();
   // the light: the sun low ahead of them; in the corridor its shafts through the windows and the dust in them

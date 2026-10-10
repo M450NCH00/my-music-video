@@ -350,7 +350,7 @@ export default class Verse1 extends Scene {
     const left = 1.3 * (1 - ease.outQuad(prog(q, T.stop - 1.9, T.stop))), turn = ease.inOutCubic(prog(q, T.stop, T.turned)), at = seatAt(DOOR_STEP[0] + STRIDE * left, DOOR_STEP[1]);
     c.save(); place(c, cam);
     // (he turns a little with it, so that it is her he is smiling at: we are looking over her shoulder)
-    const he = (x: Ctx, silhouette?: string) => drawBoy(x, { from: 'walk', to: 'turn-smile', k: 1 - smoothstep(0, 0.3, left) }, { x: at.x, y: at.y, scale: at.scale, facing: at.facing - 270 + 34 * turn, t, walk: -left, k: turn, headTurn: 12 * turn, tilt: 5 * turn, outfit: 'autumn', bag: true, blush: 0.5 + 0.3 * turn, light: [-0.85, -0.4], shadow: silhouette ? 0 : 0.7, silhouette });
+    const he = (x: Ctx, silhouette?: string) => drawBoy(x, { from: 'walk', to: 'turn-smile', k: 1 - smoothstep(0, 0.3, left) }, { x: at.x, y: at.y, scale: at.scale, facing: at.facing - 270 + 34 * turn, t, walk: -left, k: turn, headTurn: 12 * turn, tilt: 5 * turn, openEyes: true, outfit: 'autumn', bag: true, blush: 0.5 + 0.3 * turn, light: [-0.85, -0.4], shadow: silhouette ? 0 : 0.7, silhouette });
     const a = he(c);
     c.restore();
     const [dx, dy] = onScreen(cam, DOORWAY), [hx, hy] = onScreen(cam, a.head);

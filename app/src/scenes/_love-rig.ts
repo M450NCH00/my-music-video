@@ -287,6 +287,8 @@ export interface CharParams {
   headTurn?: number; nod?: number; tilt?: number;
   /** 0..1: above 0.5 the eyes close into ◡ curves. */
   smile?: number;
+  /** Keep the eyes round and open however much it smiles. */
+  openEyes?: boolean;
   /** The pose's own progress or amount (see each pose). */
   k?: number;
   /** Wear the backpack (default true except when sitting or lying). */
@@ -374,9 +376,11 @@ function figure(c: Ctx, who: 'girl' | 'boy', poseArg: PoseArg, p: CharParams): A
   const legYr = span(14, spine(50), knL, knR, anL, anR);
 
   const leg = (hj: V3, kn: V3, an: V3, pole: V3) => {
-    const sh = far(kn);
-    part(tube(hj, b.leg[0], kn, b.leg[1]), legTop, legLow, { shade: sh, yr: legYr });
-    part(tube(kn, b.leg[1], an, b.leg[2]), legTop, legLow, { shade: sh, yr: legYr });
+    // (a leg does not go through what the figure is on, any more than her skirt does: lying down, a thigh
+    // that sank into the bed showed as a strip of skin under the skirt's edge)
+    const sh = far(kn), rest = (pts: V2[]) => pts.map(([x, y]) => [x, Math.min(y, p.y)] as V2);
+    part(rest(tube(hj, b.leg[0], kn, b.leg[1])), legTop, legLow, { shade: sh, yr: legYr });
+    part(rest(tube(kn, b.leg[1], an, b.leg[2])), legTop, legLow, { shade: sh, yr: legYr });
     if (girl && !winter) part(tube(mixv(kn, an, 0.72), b.leg[2] + 1.6, an, b.leg[2] + 1.3), SHIRT, SHIRT_LOW, { shade: sh });
     // the shoe: flat on the floor and pointing the way the body faces, or off the floor hanging square from the shin
     const shin = norm(sub(an, kn)), free = clamp((an[1] - ANKLE - 6) / 54);
@@ -650,7 +654,7 @@ function figure(c: Ctx, who: 'girl' | 'boy', poseArg: PoseArg, p: CharParams): A
         const e = on(sg * 21, -13);
         if (e.z > 0.16) {
           c.strokeStyle = rgba('ink', 0.92); c.fillStyle = rgba('ink', 0.94); c.lineWidth = clamp(2.2 * s, 1.5, 3); c.lineCap = 'round';
-          if (smile > 0.5) { c.beginPath(); c.ellipse(e.q[0] + ux * 2.5 * s, e.q[1] + uy * 2.5 * s, 5.6 * s * clamp(e.z + 0.2), 4.8 * s, lean, 0.12 * Math.PI, 0.88 * Math.PI); c.stroke(); }
+          if (smile > 0.5 && !p.openEyes) { c.beginPath(); c.ellipse(e.q[0] + ux * 2.5 * s, e.q[1] + uy * 2.5 * s, 5.6 * s * clamp(e.z + 0.2), 4.8 * s, lean, 0.12 * Math.PI, 0.88 * Math.PI); c.stroke(); }
           else { c.beginPath(); c.ellipse(e.q[0], e.q[1], 3.4 * s * clamp(e.z + 0.25), 4.5 * s, lean, 0, TAU); c.fill(); }
         }
       }
