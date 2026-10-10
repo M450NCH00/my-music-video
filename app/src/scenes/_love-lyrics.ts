@@ -44,6 +44,8 @@ export interface LyricOpts {
   hold?: number; until?: number;
   /** Opacity of characters not yet sung (default 0.35; 0 = they only appear as they are sung). */
   ghost?: number;
+  /** hand, chalk, grid: a held note is written in for as long as it is held (default: in 0.45 s at most). */
+  slow?: boolean;
   /** Rotate the whole line about (x, y), rad. */
   angle?: number;
   /**
@@ -115,8 +117,9 @@ export function drawLyric(c: Ctx, line: Line, t: number, o: LyricOpts): LyricCha
       const ch = chars[k]!, w = ch.word, g = lay?.glyphs[k - a];
       const lx = left + (grid ? (k - a + 0.5) * cell : g!.x + g!.w / 2);
       const since = w ? t - w.start : -Infinity;
-      const dur = w ? Math.min(0.45, Math.max(0.12, w.end - w.start)) : 1;
-      const sung = clamp(since / (style === 'plain' ? 0.08 : dur));
+      const dur = w ? Math.min(o.slow ? Infinity : 0.45, Math.max(0.12, w.end - w.start)) : 1;
+      // (a held note written slowly: the first of the character at once, so that it is seen to start with the voice)
+      const sung = o.slow && style !== 'plain' ? 0.4 * clamp(since / 0.15) + 0.6 * clamp(since / dur) : clamp(since / (style === 'plain' ? 0.08 : dur));
       let pos = { x: lx, y, angle: 0, scale: 1 };
       if (o.path) { const q = o.path(clamp((lx - left) / Math.max(1, width)), k, chars.length); pos = { x: q.x - o.x, y: q.y - o.y, angle: q.angle ?? 0, scale: q.scale ?? 1 }; }
       out.push({ ch: ch.ch, k, word: w, x: pos.x, y: pos.y, angle: pos.angle, scale: pos.scale, size, sung, since, alpha: 1, color: sung > 0 ? sungCol : rest });

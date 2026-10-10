@@ -1092,6 +1092,8 @@ export interface BagOpts {
  * lamp with `room.warm` and goes on back and up with `cam`).
  */
 export const CHORUS2_DESK = { cam: { zoom: 0.34, x: 1955 - W / 2, y: 535 - H / 2 }, zip: 0, room: { sharp: 1, warm: 1 } } as const;
+/** Her window in that corner of her room, in the room's own px, and how far away the room's layer is (the bridge goes on back and up to this window). */
+export const DESK_WINDOW = { x: 900, y: -300, w: 540, h: 630, depth: 0.7 } as const;
 /** How far it is from the seat of her chair down to the floor (the bag shot's own px). */
 const SEAT = 760;
 /** Her hand, come down from the upper right, the sleeve of her cardigan behind it: (x, y) is where finger and thumb meet. (`flip`: her other hand.) */
@@ -1118,7 +1120,7 @@ function study(b: Ctx, t: number, warm: number) {
   fillV(b, 1215, 1800, dark(WOOD, 0.45), dark(WOOD_LOW, 0.6)); b.fillRect(-1700, 1215, 6600, 900);
   b.fillStyle = dark(rgba('paper'), 0.55); b.fillRect(-1700, 1193, 6600, 22);
   // her window, the night and the snow in it; its curtains
-  const wx = 900, wy = -300, ww = 540, wh = 630, sky = b.createLinearGradient(0, wy, 0, wy + wh);
+  const { x: wx, y: wy, w: ww, h: wh } = DESK_WINDOW, sky = b.createLinearGradient(0, wy, 0, wy + wh);
   sky.addColorStop(0, mix('navy', 'dusk', 0.22)); sky.addColorStop(1, mix('dusk', 'navy', 0.3));
   b.fillStyle = dark(TRIM, 0.5); b.fillRect(wx - 26, wy - 26, ww + 52, wh + 52); b.fillRect(wx - 50, wy + wh + 22, ww + 100, 24);
   b.save(); b.beginPath(); b.rect(wx, wy, ww, wh); b.clip();
@@ -1185,7 +1187,7 @@ function study(b: Ctx, t: number, warm: number) {
  */
 export function drawBagShot(c: Ctx, g: Ctx, o: BagOpts): { mouth: V2; pull: V2; lip: number } {
   const { t, cam } = o, { x, y, scale: s } = BAG, wood = mix(WOOD, NIGHT, 0.22), woodLow = mix(WOOD_LOW, NIGHT, 0.3), room = o.room, warm = room?.warm ?? 1;
-  if (room) layer(c, { cam, depth: 0.7, blur: 6 * (1 - room.sharp) }, (b) => study(b, t, warm));
+  if (room) layer(c, { cam, depth: DESK_WINDOW.depth, blur: 6 * (1 - room.sharp) }, (b) => study(b, t, warm));
   // her room behind it, dark and out of focus; the lamp on her desk, off to the right
   else layer(c, { cam, depth: 0.7, blur: 6 }, (b) => {
     const wall = mix(mix('paper', 'blush', 0.28), NIGHT, 0.6), lamp = b.createRadialGradient(1700, 120, 0, 1700, 120, 1300);

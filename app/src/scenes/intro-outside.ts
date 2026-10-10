@@ -11,6 +11,8 @@ import { dustMotes, glow, layer, type Cam, type Ctx, type V2 } from './_love';
 const COL0 = 60, ROW0 = 250, PITCH_X = 240, PITCH_Y = 170, WIN_W = 192, WIN_H = 108;
 /** Her classroom's window (fourth column, third floor): the classroom picture, a tenth of its size. */
 export const WIN = { x: COL0 + 2 * PITCH_X, y: ROW0 + PITCH_Y, w: WIN_W, h: WIN_H };
+/** (The bridge builds this wall on without an end: the grid's pitch, and from below `miniRoom`, `dressing` and the wall's colours.) */
+export const PITCH: V2 = [PITCH_X, PITCH_Y];
 /** The building: the end of its front, the width of its end wall (in shade), its roof line, the ground. */
 const EDGE = 1022, END = 30, ROOF = 196, GROUND = 930;
 /** The middle of the bell as it hangs on the end wall. */
@@ -19,7 +21,7 @@ export const BELL: V2 = [EDGE + END + 46, 470];
 const wire = (u: number): V2 => [lerp(EDGE + END + 6, 2090, u), lerp(ROOF + 4, 92, u) + 280 * u * (1 - u)];
 const BIRDS = [0.262, 0.305, 0.385, 0.47, 0.515];
 
-const WALL = mix('paper', 'peach', 0.34), WALL_LOW = mix(mix('paper', 'peach', 0.56), 'ink', 0.07);
+export const WALL = mix('paper', 'peach', 0.34), WALL_LOW = mix(mix('paper', 'peach', 0.56), 'ink', 0.07);
 const SHADE = mix(mix('paper', 'peach', 0.7), 'ink', 0.3), TRIM = mix('paper', 'peach', 0.1);
 const LEAF = mix(mix('gold', 'peach', 0.5), 'ink', 0.12), LEAF_LOW = mix(mix('peach', 'rose', 0.22), 'ink', 0.3), LEAF_LIT = mix('gold', 'paper', 0.3);
 const BRONZE = mix('gold', 'ink', 0.34), BRONZE_LOW = mix('gold', 'ink', 0.58), IRON = mix('ink', 'navy', 0.3);
@@ -118,7 +120,7 @@ function distance(c: Ctx, t: number) {
 
 // ------------------------------------------------------------------ the building
 /** A classroom seen through its window from far away: what the classroom picture looks like at this size. */
-function miniRoom(c: Ctx, x: number, y: number, w: number, h: number, seed: number) {
+export function miniRoom(c: Ctx, x: number, y: number, w: number, h: number, seed: number) {
   const px = (v: number) => x + (w * v) / 1920, py = (v: number) => y + (h * v) / 1080;
   c.save(); c.beginPath(); c.rect(x, y, w, h); c.clip();
   c.fillStyle = mix('paper', 'peach', 0.28); c.fillRect(x, y, w, h);
@@ -140,7 +142,7 @@ function miniRoom(c: Ctx, x: number, y: number, w: number, h: number, seed: numb
   c.restore();
 }
 /** A window's glass (a little of the sky in it), its frame and bars, its sill: `glass` 0..1 = how much of them is there. */
-function dressing(c: Ctx, x: number, y: number, w: number, h: number, glass = 1) {
+export function dressing(c: Ctx, x: number, y: number, w: number, h: number, glass = 1) {
   if (glass <= 0.003) return;
   c.save(); c.globalAlpha *= glass;
   c.fillStyle = mix('sky', 'navy', 0.22, 0.26); c.fillRect(x, y, w, h);
