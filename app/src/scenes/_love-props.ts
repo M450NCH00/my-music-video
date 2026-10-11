@@ -92,27 +92,49 @@ export function phoneGlow(g: Ctx, x: number, y: number, scale = 1, amount = 1) {
 }
 
 /**
- * An open umbrella held at (x, y) (the hand): the shaft goes up from there, leaning `tilt` rad.
- * Draw it after the people under it. Returns the middle of its rim, for drips.
+ * The umbrella's canopy, in units of its scale: half its width, how far its top is above the hand, and how far its
+ * rim is below its top. The usual one, and the small see-through one of the finale (a deep dome).
  */
-export function drawUmbrella(c: Ctx, o: { x: number; y: number; scale?: number; tilt?: number; color?: string; alpha?: number }): V2 {
-  const s = o.scale ?? 1, col = o.color ?? mix('sky', 'navy', 0.16), low = mix(col, 'navy', 0.22), R = 190 * s, top = 292 * s, rise = 96 * s;
+export const UMBRELLA = { r: 190, top: 292, rise: 96 } as const, UMBRELLA_CLEAR = { r: 124, top: 292, rise: 150 } as const;
+/**
+ * An umbrella held at (x, y) (the hand): the shaft goes up from there, leaning `tilt` rad.
+ * Draw it after the people under it. Returns the middle of its rim, for drips.
+ * `clear`: the small see-through one (UMBRELLA_CLEAR): what is under it shows through. `open`: 1 = open (the
+ * default) .. 0 = furled round its shaft.
+ */
+export function drawUmbrella(c: Ctx, o: { x: number; y: number; scale?: number; tilt?: number; color?: string; alpha?: number; clear?: boolean; open?: number }): V2 {
+  const s = o.scale ?? 1, e = clamp(o.open ?? 1), dims = o.clear ? UMBRELLA_CLEAR : UMBRELLA, col = o.color ?? (o.clear ? mix('paper', 'frost', 0.55) : mix('sky', 'navy', 0.16)), low = mix(col, 'navy', 0.22);
+  const top = dims.top * s, R = lerp(13, dims.r, e) * s, rise = lerp(dims.top * 0.74, dims.rise, e) * s, n = 4;
+  const shaft = (from: number) => { c.strokeStyle = mix('ink', 'peach', 0.2); c.lineWidth = 3.2 * s; c.beginPath(); c.moveTo(0, from); c.lineTo(0, 30 * s); c.arc(-9 * s, 30 * s, 9 * s, 0, Math.PI); c.stroke(); };
   c.save(); c.translate(o.x, o.y); c.rotate(o.tilt ?? 0);
   if (o.alpha !== undefined) c.globalAlpha = o.alpha;
-  // the canopy: a dome with a scalloped rim
-  const dome = new Path2D(), n = 4;
+  c.lineCap = 'round';
+  // the canopy: a dome with a scalloped rim (the clear one: a smooth rim, the far side of it seen through the near)
+  const dome = new Path2D();
   dome.moveTo(-R, -top + rise);
   dome.bezierCurveTo(-R * 0.94, -top + rise * 0.12, -R * 0.42, -top, 0, -top);
   dome.bezierCurveTo(R * 0.42, -top, R * 0.94, -top + rise * 0.12, R, -top + rise);
-  for (let i = n - 1; i >= 0; i--) { const x0 = lerp(-R, R, (i + 1) / n), x1 = lerp(-R, R, i / n); dome.quadraticCurveTo((x0 + x1) / 2, -top + rise - 20 * s, x1, -top + rise); }
+  if (o.clear) dome.quadraticCurveTo(0, -top + rise + 20 * s * e, -R, -top + rise);
+  else for (let i = n - 1; i >= 0; i--) { const x0 = lerp(-R, R, (i + 1) / n), x1 = lerp(-R, R, i / n); dome.quadraticCurveTo((x0 + x1) / 2, -top + rise - 20 * s * e, x1, -top + rise); }
   dome.closePath();
-  fillV(c, dome, col, low, -top, -top + rise);
-  c.strokeStyle = rgba('paper', 0.28); c.lineWidth = 1.5; c.lineCap = 'round';
+  if (o.clear) {
+    shaft(-top);
+    fillV(c, dome, mix('paper', col, 0.4, lerp(0.74, 0.42, e)), mix(col, 'navy', 0.1, lerp(0.66, 0.2, e)), -top, -top + rise);
+    c.strokeStyle = rgba('paper', 0.36 * e); c.lineWidth = 1.6;
+    c.beginPath(); c.moveTo(-R, -top + rise); c.quadraticCurveTo(0, -top + rise - 18 * s * e, R, -top + rise); c.stroke();
+    c.strokeStyle = rgba('paper', 0.85); c.lineWidth = 2.4; c.lineJoin = 'round'; c.stroke(dome);
+  } else fillV(c, dome, col, low, -top, -top + rise);
+  c.strokeStyle = rgba('paper', o.clear ? 0.5 : 0.28); c.lineWidth = 1.5;
   for (let i = 1; i < n; i++) { const x = lerp(-R, R, i / n); c.beginPath(); c.moveTo(0, -top); c.quadraticCurveTo(x * 0.62, -top + rise * 0.2, x, -top + rise); c.stroke(); }
+  if (o.clear) {
+    // (the light on it)
+    c.strokeStyle = rgba('paper', 0.7 * e); c.lineWidth = 6 * s;
+    c.beginPath(); c.moveTo(-R * 0.8, -top + rise * 0.52); c.quadraticCurveTo(-R * 0.72, -top + rise * 0.2, -R * 0.42, -top + rise * 0.09); c.stroke();
+  }
   // tip, shaft and the crook of the handle
   c.strokeStyle = mix('ink', 'peach', 0.2); c.lineWidth = 3.2 * s;
   c.beginPath(); c.moveTo(0, -top - 13 * s); c.lineTo(0, -top); c.stroke();
-  c.beginPath(); c.moveTo(0, -top + rise - 18 * s); c.lineTo(0, 30 * s); c.arc(-9 * s, 30 * s, 9 * s, 0, Math.PI); c.stroke();
+  if (!o.clear) shaft(-top + rise - 18 * s);
   c.restore();
   const a = o.tilt ?? 0;
   return [o.x + Math.sin(a) * (top - rise), o.y - Math.cos(a) * (top - rise)];

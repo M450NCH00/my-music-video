@@ -699,7 +699,13 @@ export interface WayOpts {
   breath?: { x: number; y: number; age: number; dir: number }[];
   /** 0..1: how much of the place is there yet. Chorus 2 starts on its sky and its first four lamps alone (VERSE2_LAMPS). */
   there?: number;
+  /**
+   * Paints the sky (the whole frame) in place of the season's own. The season's sun and the light it gives are then
+   * left out as well: they are the scene's to paint (the finale: the rain's sky, which clears to a sunset of its own).
+   */
+  sky?: (c: Ctx) => void;
 }
+const heaven = (c: Ctx, o: WayOpts) => { if (o.sky) o.sky(c); else sky(c, o.season, o.late); };
 /**
  * The way home under a camera. `c`: the picture (the whole frame is painted); `g`: the light layer (the low sun,
  * the shafts through the corridor's windows and the dust in them, the glow of the star marks; in winter the lamps
@@ -711,12 +717,12 @@ export function drawWay(c: Ctx, g: Ctx, o: WayOpts) {
   // the place comes up under its lamps: the sky and their light are there from the first frame
   const s = scratch('way');
   way(s.c, g, o, there);
-  sky(c, o.season, o.late); lampLight(c, null, o.cam, o.lamps ?? []);
+  heaven(c, o); lampLight(c, null, o.cam, o.lamps ?? []);
   c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = there; c.drawImage(s.cv, 0, 0, W, H); c.restore();
 }
 function way(c: Ctx, g: Ctx, o: WayOpts, there: number) {
   const { t, cam, season: s, late } = o, view = inView(cam), z = cam.zoom ?? 1, lamps = (o.lamps ?? []).filter((l) => l.x > view[0] - 420 && l.x < view[1] + 420);
-  sky(c, s, late);
+  heaven(c, o);
   // what is far: the town, the trees, the shops, each a layer painted once (see strip())
   const far = (x: Ctx, depth: number, paint: (v: V2) => void) => { x.save(); camera(x, cam, depth); paint(span(cam, depth)); x.restore(); };
   const town = [-260, 180, 2560, 1000], trees = [-620, s.snow ? 330 : 420, 4060, YARD + 10], row = [2560, s.snow ? 620 : 700, 5280, SHOPS + 60];
@@ -757,7 +763,7 @@ function way(c: Ctx, g: Ctx, o: WayOpts, there: number) {
   // the light (all of it but the lamps' comes with the place)
   const shafts: Shaft[] = [];
   g.save(); g.globalAlpha *= there;
-  if (s.sun) {
+  if (o.sky) { /* (its light is the scene's own) */ } else if (s.sun) {
     // the sun low ahead of them; in the corridor its shafts through the windows and the dust in them
     const sun = sunAt(late);
     glow(g, sun[0], sun[1], 720, { color: s.sun, alpha: 0.5 });

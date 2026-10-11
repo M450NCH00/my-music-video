@@ -12,7 +12,7 @@
 // Everything is a pure function of the time handed in (and a seed): no Math.random, no Date.now.
 export { DESK_TOP, POSES, SEAT_TOP, drawBoy, drawGirl, drawStudent } from './_love-rig';
 export type { Anchors, CharParams, Ctx, Outfit, PoseArg, PoseName, V2 } from './_love-rig';
-export { atDesk, clockTick, drawBag, drawChair, drawClock, drawDesk, drawPen, drawPhone, drawStar, drawUmbrella, phoneGlow } from './_love-props';
+export { UMBRELLA_CLEAR, atDesk, clockTick, drawBag, drawChair, drawClock, drawDesk, drawPen, drawPhone, drawStar, drawUmbrella, phoneGlow } from './_love-props';
 export { camera, chalkDust, dottedPath, dustMotes, frost, glow, inShaft, layer, leaves, lightLeak, lightShaft, paperGrain, paperScraps, paperStars, petals, rain, scratch, snow, soundRing, sparkle } from './_love-fx';
 export type { Cam, Drift, LayerOpts, Shaft } from './_love-fx';
 export { LYRIC_GHOST, LYRIC_LEAD, drawLyric } from './_love-lyrics';
