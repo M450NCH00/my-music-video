@@ -34,8 +34,9 @@ PUNCT = "，。、；：？！…—·～“”‘’（）《》〈〉「」『
 SIGNS = "×÷±≠≈≤≥√²³π∞°△∠♪♡♥★☆→←↑↓"
 # Characters that are in neither the lyrics nor the title but are written somewhere on screen.
 # (The date on the blackboard and the pages of the wall calendar: 年 月 日 星期 一..六. The message she types
-# on her phone in chorus 1, 明天见噢: 噢.)
-EXTRA = "年月日星期二三四五六噢"
+# on her phone in chorus 1, 明天见噢: 噢. The credit line under the title at the end of the outro,
+# 音乐由 Suno AI 生成 · 画面由代码绘制.)
+EXTRA = "年月日星期二三四五六噢" + "音乐由生成画面代码绘制"
 
 WENKAI = "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-{}.ttf"
 FONTS = {

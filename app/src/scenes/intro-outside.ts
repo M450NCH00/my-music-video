@@ -44,6 +44,10 @@ export interface OutsideOpts {
   birdsAt?: number;
   /** 0..1: the branch close to the camera; the sun's glow (it is behind the building until the sky comes into view). */
   near?: number; sun?: number;
+  /** Paints the sky (the whole frame) in place of the afternoon's and its clouds: the outro's sunset. */
+  sky?: (c: Ctx) => void;
+  /** After school: there is nobody at the windows. */
+  empty?: boolean;
 }
 
 // ------------------------------------------------------------------ sky, distance, trees
@@ -120,7 +124,7 @@ function distance(c: Ctx, t: number) {
 
 // ------------------------------------------------------------------ the building
 /** A classroom seen through its window from far away: what the classroom picture looks like at this size. */
-export function miniRoom(c: Ctx, x: number, y: number, w: number, h: number, seed: number) {
+export function miniRoom(c: Ctx, x: number, y: number, w: number, h: number, seed: number, empty = false) {
   const px = (v: number) => x + (w * v) / 1920, py = (v: number) => y + (h * v) / 1080;
   c.save(); c.beginPath(); c.rect(x, y, w, h); c.clip();
   c.fillStyle = mix('paper', 'peach', 0.28); c.fillRect(x, y, w, h);
@@ -130,13 +134,15 @@ export function miniRoom(c: Ctx, x: number, y: number, w: number, h: number, see
   c.fillStyle = mix('navy', 'ink', 0.3); c.fillRect(px(112), py(332), px(781) - px(112), py(514) - py(332));
   c.fillStyle = mix(mix('paper', 'peach', 0.45), 'ink', 0.12); c.beginPath(); c.moveTo(px(1065), py(172)); c.lineTo(px(1920), py(-690)); c.lineTo(px(1920), py(1340)); c.lineTo(px(1065), py(652)); c.closePath(); c.fill();
   c.fillStyle = mix('paper', 'gold', 0.22); c.beginPath(); c.moveTo(px(1140), py(250)); c.lineTo(px(1920), py(-420)); c.lineTo(px(1920), py(790)); c.lineTo(px(1140), py(540)); c.closePath(); c.fill();
-  // the heads of the class, row behind row
+  // the heads of the class, row behind row (after school: their desks alone)
   for (const [Z, n] of [[2720, 8], [2290, 7], [1860, 6], [1430, 5], [1000, 4]] as [number, number][]) for (let k = 0; k < n; k++) {
-    if (hash(seed, Z, k) < 0.16 || (Z === 1000 && k === 1)) continue;
+    if (!empty && (hash(seed, Z, k) < 0.16 || (Z === 1000 && k === 1))) continue;
     const X = 480 - 290 * k, hx = px(800 + (1250 * X) / Z), hy = py(440 + (1250 * 150) / Z), r = (w * 49 * 1250) / Z / 1920;
     if (hx < x - r) continue;
-    c.fillStyle = mix('frost', 'sky', 0.15 + 0.6 * hash(seed, Z, k, 2));
-    c.beginPath(); c.arc(hx, hy, r, 0, TAU); c.fill(); c.beginPath(); c.roundRect(hx - r * 1.15, hy + r * 0.85, r * 2.3, r * 2.1, r * 0.8); c.fill();
+    if (!empty) {
+      c.fillStyle = mix('frost', 'sky', 0.15 + 0.6 * hash(seed, Z, k, 2));
+      c.beginPath(); c.arc(hx, hy, r, 0, TAU); c.fill(); c.beginPath(); c.roundRect(hx - r * 1.15, hy + r * 0.85, r * 2.3, r * 2.1, r * 0.8); c.fill();
+    }
     c.fillStyle = mix(mix('paper', 'peach', 0.6), 'ink', 0.14); c.fillRect(hx - r * 1.5, hy + r * 2.5, r * 3, r * 0.8);
   }
   c.restore();
@@ -160,7 +166,7 @@ export function dressing(c: Ctx, x: number, y: number, w: number, h: number, gla
   c.restore();
 }
 const columns = [-1, 0, 1, 2, 3], floors = [0, 1, 2, 3];
-function building(c: Ctx) {
+function building(c: Ctx, empty = false) {
   // the end wall, in shade; the front; the roof's edge
   c.fillStyle = SHADE; c.fillRect(EDGE, ROOF, END, GROUND - ROOF);
   const g = c.createLinearGradient(0, ROOF, 0, GROUND);
@@ -180,7 +186,7 @@ function building(c: Ctx) {
     // (the reveal of the window in the wall: a line of shade above and on the left)
     c.fillStyle = rgba('ink', 0.1); c.fillRect(x - 6, y - 7, WIN_W + 9, WIN_H + 10);
     if (hers) { c.fillStyle = mix('paper', 'peach', 0.28); c.fillRect(x, y, WIN_W, WIN_H); continue; }
-    miniRoom(c, x, y, WIN_W, WIN_H, 100 + i * 7 + j * 31);
+    miniRoom(c, x, y, WIN_W, WIN_H, 100 + i * 7 + j * 31, empty);
     dressing(c, x, y, WIN_W, WIN_H);
   }
 }
@@ -253,13 +259,13 @@ function branch(c: Ctx, t: number) {
  */
 export function drawOutside(c: Ctx, g: Ctx, o: OutsideOpts) {
   const { t, cam } = o, blur = o.blur ?? 0;
-  sky(c);
-  layer(c, { cam, depth: 0.05, blur: 3 }, (b) => clouds(b, t));
+  if (o.sky) o.sky(c);
+  else { sky(c); layer(c, { cam, depth: 0.05, blur: 3 }, (b) => clouds(b, t)); }
   o.written?.();
   layer(c, { cam, depth: 0.5, blur: 3, haze: 0.16, hazeColor: mix('paper', 'gold', 0.35) }, (b) => distance(b, t));
   layer(c, { cam, depth: 0.8, haze: 0.06, hazeColor: mix('paper', 'gold', 0.35) }, (b) => tree(b, 1856, 990, 128, t, 3));
   layer(c, { cam, depth: 1, blur }, (b) => {
-    building(b);
+    building(b, o.empty);
     bell(b, o.swing ?? 0, o.clapper ?? 0);
     birds(b, t, o.birdsAt);
   });

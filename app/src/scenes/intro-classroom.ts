@@ -7,7 +7,7 @@ import { mix, rgba } from '../engine/palette';
 import { F, font } from '../engine/type';
 import { clamp, hash, lerp, TAU } from '../engine/util';
 import {
-  atDesk, drawBoy, drawChair, drawClock, drawDesk, drawGirl, drawPen, drawStudent, dustMotes, layer, lightShaft,
+  DESK_TOP, SEAT_TOP, atDesk, drawBoy, drawChair, drawClock, drawDesk, drawGirl, drawPen, drawStudent, dustMotes, layer, lightShaft,
   type Anchors, type Ctx, type LayerOpts, type Shaft, type V2,
 } from './_love';
 import { penSpin } from './intro-desk';
@@ -64,14 +64,18 @@ export interface RoomOpts {
   time: number; sec: number;
   /** 0..1: how bright its light is on the light layer. */
   light?: number;
+  /** After school (the outro): nobody is there, and the chairs are up on the desks, all but hers and the one beside it. */
+  empty?: boolean;
+  /** 0..1: the sunset in its windows. */
+  evening?: number;
 }
 
 // ------------------------------------------------------------------ walls, windows, blackboard
 /** What is seen through a window: the sky, and below the horizon the tops of the trees. */
-function view(c: Ctx, win: V2[], t: number) {
+function view(c: Ctx, win: V2[], t: number, evening = 0) {
   c.save(); c.clip(poly(win));
-  const g = c.createLinearGradient(0, -300, 0, 820);
-  g.addColorStop(0, mix('sky', 'paper', 0.12)); g.addColorStop(0.5, mix('sky', 'paper', 0.55)); g.addColorStop(0.66, mix('paper', 'gold', 0.3)); g.addColorStop(1, mix('gold', 'peach', 0.3));
+  const g = c.createLinearGradient(0, -300, 0, 820), late = (day: string, eve: string) => mix(day, eve, evening);
+  g.addColorStop(0, late(mix('sky', 'paper', 0.12), mix('dusk', 'blush', 0.5))); g.addColorStop(0.5, late(mix('sky', 'paper', 0.55), mix('blush', 'peach', 0.5))); g.addColorStop(0.66, late(mix('paper', 'gold', 0.3), mix('peach', 'gold', 0.5))); g.addColorStop(1, late(mix('gold', 'peach', 0.3), mix('gold', 'peach', 0.42)));
   c.fillStyle = g; c.fillRect(900, -1300, 1700, 2600);
   for (let i = 0; i < 16; i++) {
     const x = 1020 + i * 78 + 30 * hash(i, 41), y = 560 + 70 * hash(i, 42) + 3 * Math.sin(t * 0.7 + i), r = 52 + 46 * hash(i, 43);
@@ -142,7 +146,7 @@ function board(c: Ctx, shown: number, written: number) {
 }
 
 /** The room itself: walls, floor and ceiling, the windows and what is outside them, the blackboard and the clock. In the picture's own space. */
-export function shell(c: Ctx, o: Pick<RoomOpts, 't' | 'time' | 'sec'>, b: NonNullable<RoomOpts['build']>) {
+export function shell(c: Ctx, o: Pick<RoomOpts, 't' | 'time' | 'sec' | 'evening'>, b: NonNullable<RoomOpts['build']>) {
   const t = o.t, grad = (x0: number, y0: number, x1: number, y1: number, a: string, z: string) => { const g = c.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, a); g.addColorStop(1, z); return g; };
   const far = (X: number, Y: number) => P3(X, Y, FAR), near = (X: number, Y: number) => P3(X, Y, NEAR);
   // ceiling, front wall with its painted dado, floor, the two side walls
@@ -182,7 +186,7 @@ export function shell(c: Ctx, o: Pick<RoomOpts, 't' | 'time' | 'sec'>, b: NonNul
   // the windows of the right wall: what is outside, frame and bars, the sill
   WINDOWS.forEach(([Z0, Z1], i) => {
     const q = (Y: number, Z: number) => P3(RIGHT, Y, Z), win = [q(HEAD, Z1), q(HEAD, Z0), q(SILL, Z0), q(SILL, Z1)];
-    view(c, win, t);
+    view(c, win, t, o.evening);
     if (i === 0) {
       // the nearest one has its blinds down to her eye level: the stripes on her desk
       c.fillStyle = mix('paper', 'frost', 0.25, 0.94);
@@ -204,11 +208,20 @@ export function shell(c: Ctx, o: Pick<RoomOpts, 't' | 'time' | 'sec'>, b: NonNul
 }
 
 // ------------------------------------------------------------------ the people
-/** The students of one row and their desks (the seats that are his and hers stay free). */
-function row(c: Ctx, r: number, t: number) {
+/** A chair put up on its desk, as they are after school: upside down, its seat on the desk's top, its back hanging down the near side. */
+function chairUp(c: Ctx, p: { x: number; y: number; scale: number; facing: number }) {
+  const s = p.scale, about = p.y - ((DESK_TOP + SEAT_TOP) * s) / 2;
+  c.save(); c.translate(0, about); c.scale(1, -1); c.translate(0, -about);
+  drawChair(c, { ...p, x: p.x + 164 * Math.sin((p.facing * Math.PI) / 180) * s });
+  c.restore();
+}
+/** The students of one row and their desks (the seats that are his and hers stay free). `after`: after school, every desk of the row with its chair up on it. */
+function row(c: Ctx, r: number, t: number, after = false) {
   COLS.forEach((X, k) => {
     const s = seatAt(X, ROWS[r]!);
-    if (s.x < -170 || (k === 0 && r === 2)) return;
+    if (s.x < -170) return;
+    if (after) { drawDesk(c, s); chairUp(c, s); return; }
+    if (k === 0 && r === 2) return;
     const h = (q: number) => hash(r, k, q + 20), boy = h(0) < 0.5, empty = (r === 1 && k === 0) || h(1) < 0.1;
     const p = { ...s, t: t + h(2) * 20 };
     atDesk(c, { ...p, boy }, () => {
@@ -223,13 +236,13 @@ const kept = new Map<number, HTMLCanvasElement>(), EDGE = 40;
  * A row far enough from the camera that its students' small movements cannot be seen: painted once, with the
  * air's haze over it, at `res` of the picture's resolution (the soft focus of the far rows), and kept.
  */
-function farRow(c: Ctx, r: number, haze: number, res: number) {
-  let cv = kept.get(r);
+function farRow(c: Ctx, r: number, haze: number, res: number, empty = false) {
+  let cv = kept.get(empty ? r + 10 : r);
   if (!cv) {
-    kept.set(r, (cv = document.createElement('canvas')));
+    kept.set(empty ? r + 10 : r, (cv = document.createElement('canvas')));
     cv.width = Math.round((W + EDGE * 2) * SCALE * res); cv.height = Math.round((H + EDGE * 2) * SCALE * res);
     const x = scaleContext2D(cv.getContext('2d')!, SCALE * res);
-    x.translate(EDGE, EDGE); row(x, r, 0);
+    x.translate(EDGE, EDGE); row(x, r, 0, empty);
     x.globalCompositeOperation = 'source-atop'; x.fillStyle = rgba(AIR, haze); x.fillRect(-EDGE, -EDGE, W + EDGE * 2, H + EDGE * 2);
   }
   c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
@@ -237,11 +250,22 @@ function farRow(c: Ctx, r: number, haze: number, res: number) {
 }
 
 /** Her, at her desk by the window: chin on hand, the pen turning in the other, her face to the light. */
-function her(c: Ctx, o: RoomOpts): Anchors {
+function her(c: Ctx, o: RoomOpts): Anchors | null {
   const p = { x: HER.x, y: HER.y, scale: HER.scale, facing: 158 }, s = p.scale;
+  if (o.empty) {
+    // (after school: the seat beside hers, its chair down like hers)
+    const q = seatAt(COLS[1]!, ROWS[0]!), beside = { ...q, facing: q.facing + p.facing - HER.facing };
+    drawDesk(c, beside); drawChair(c, beside);
+  }
   drawDesk(c, p);
   // (her notebook, open on the desk)
   c.fillStyle = rgba('paper'); c.beginPath(); c.roundRect(p.x + 44 * s, p.y - 287 * s, 84 * s, 5 * s, 2 * s); c.fill();
+  if (o.empty) {
+    // (and her pen, lying on it)
+    c.save(); c.translate(HER_HAND[0] + 2 * s, HER_HAND[1] - 6 * s); c.scale(1, 0.42); drawPen(c, 0, 0, 1.5 * s, 2.1); c.restore();
+    drawChair(c, p);
+    return null;
+  }
   // the pen in her right hand, turning flat above the desk (seen from here, an ellipse). Her hand is on the far
   // side of her from here, so the pen is painted before she is: she is in front of it
   const turnAt = 0.5 - penSpin(o.beat) * TAU;
@@ -269,16 +293,17 @@ export function drawClassroom(c: Ctx, g: Ctx, o: RoomOpts) {
   const b = o.build ?? ALL, t = o.t, light = o.light ?? 1;
   const L = (depth: number, opts: LayerOpts, draw: (c: Ctx) => void) => { if ((opts.alpha ?? 1) > 0.003) layer(c, { hazeColor: AIR, ...opts }, (cc) => { o.place(cc, depth); cc.translate(0, (1 - (opts.alpha ?? 1)) * 26); draw(cc); }); };
   L(0.8, {}, (cc) => shell(cc, o, b));
-  L(0.84, { alpha: b.rows[3] }, (cc) => farRow(cc, 4, 0.3, 0.5));
-  L(0.87, { alpha: b.rows[2] }, (cc) => farRow(cc, 3, 0.22, 0.5));
+  const empty = !!o.empty;
+  L(0.84, { alpha: b.rows[3] }, (cc) => farRow(cc, 4, 0.3, 0.5, empty));
+  L(0.87, { alpha: b.rows[2] }, (cc) => farRow(cc, 3, 0.22, 0.5, empty));
   // the sunbeams of the two far windows cross the room here; his seat is in the nearer one
   c.save(); o.place(c, 0.9);
   lightShaft(c, BEAMS[2]!.shaft, { alpha: 0.16, t }); lightShaft(c, BEAMS[1]!.shaft, { alpha: 0.24 * (0.4 + 0.6 * b.him), t });
   c.restore();
-  L(0.9, { alpha: b.rows[1] }, (cc) => farRow(cc, 2, 0.12, 1));
-  L(0.9, { haze: 0.03, alpha: b.him }, (cc) => { him(cc, t); });
+  L(0.9, { alpha: b.rows[1] }, (cc) => farRow(cc, 2, 0.12, 1, empty));
+  if (!empty) L(0.9, { haze: 0.03, alpha: b.him }, (cc) => { him(cc, t); });
   c.save(); o.place(c, 0.9); lightShaft(c, BEAMS[1]!.shaft, { alpha: 0.07 * b.him, t }); c.restore();
-  L(0.95, { haze: 0.05, alpha: b.rows[0] }, (cc) => row(cc, 1, t));
+  L(0.95, { haze: 0.05, alpha: b.rows[0] }, (cc) => row(cc, 1, t, empty));
   L(1, {}, (cc) => { her(cc, o); });
   if (light <= 0.003) return;
   // the light: the windows themselves, the beams (faintly: they glow), his sunbeam on him, the dust
@@ -287,7 +312,7 @@ export function drawClassroom(c: Ctx, g: Ctx, o: RoomOpts) {
   WINDOWS.forEach(([Z0, Z1], i) => { const z = i ? Z1 : 1140; g.fillStyle = mix('paper', 'gold', 0.3, 0.075); g.fill(poly([P3(RIGHT, HEAD, z), P3(RIGHT, HEAD, Z0), P3(RIGHT, SILL, Z0), P3(RIGHT, SILL, z)])); });
   g.restore();
   // (he sits in front of the far windows: their light is behind his head, not over it)
-  if (b.him > 0.003) { g.save(); g.globalCompositeOperation = 'destination-out'; g.globalAlpha = b.him; o.place(g, 0.9); g.translate(0, (1 - b.him) * 26); him(g, t, rgba('ink')); g.restore(); }
+  if (b.him > 0.003 && !empty) { g.save(); g.globalCompositeOperation = 'destination-out'; g.globalAlpha = b.him; o.place(g, 0.9); g.translate(0, (1 - b.him) * 26); him(g, t, rgba('ink')); g.restore(); }
   g.save(); o.place(g, 0.9); g.globalAlpha *= light;
   lightShaft(g, BEAMS[1]!.shaft, { alpha: 0.022, t }); lightShaft(g, BEAMS[2]!.shaft, { alpha: 0.015, t });
   dustMotes(g, t, { shafts: BEAMS.map((bm) => bm.shaft), count: 110, seed: 4 });

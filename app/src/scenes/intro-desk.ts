@@ -76,7 +76,10 @@ const WORK: [number, number, string][] = [
 /** What is left of the page before: [ruled line, x from the spine (negative: on the left page), text]. */
 const BEFORE: [number, number, string][] = [[1, -410, 'S = πr²'], [2, -372, '= π × 6²'], [3, -372, '= 36π ≈ 113.1'], [5, -410, 'C = 2πr'], [6, -372, '= 12π ≈ 37.7'], [8, -410, 'V = πr²h'], [9, -372, '= 36π × 5'], [10, -372, '= 180π']];
 
-function notebook(c: Ctx, doodle: number) {
+/** The right-hand page's ruling, in the notebook's own space (x from its spine, y down the page): its margin rule, its first ruled line and their pitch, its width. */
+export const PAGE = { margin: BOOK.margin, rule0: BOOK.rule0, rule: BOOK.rule, w: BOOK.w } as const;
+
+function notebook(c: Ctx, doodle: number, written?: (c: Ctx) => void) {
   const B = BOOK, h = B.bottom - B.top;
   c.save(); c.translate(B.x, B.y); c.rotate(B.rot);
   // the pages, with their shadow on the desk; a few more sheets showing under their outer edges
@@ -118,6 +121,7 @@ function notebook(c: Ctx, doodle: number) {
   c.restore();
   // the doodle, in the margin beside it all
   drawDoodle(c, 77, 648, 58, doodle);
+  written?.(c);
   paperGrain(c, { x: -B.w, y: B.top, w: B.w * 2, h, alpha: 0.9, scale: 1.6 });
   // the pages curve down into the spine
   for (const sg of [1, -1]) {
@@ -162,8 +166,8 @@ function capsule(p: Path2D, a: V2, b: V2, ra: number, rb: number) {
 }
 const turn = (p: V2, about: V2, a: number): V2 => { const ca = Math.cos(a), sa = Math.sin(a), x = p[0] - about[0], y = p[1] - about[1]; return [about[0] + x * ca - y * sa, about[1] + x * sa + y * ca]; };
 
-function drawPenBig(c: Ctx, x: number, y: number, angle: number, alpha = 1) {
-  // (along +x: its point at 150, its end at -180)
+function drawPenBig(c: Ctx, x: number, y: number, angle: number, alpha = 1, roll = 0) {
+  // (along +x: its point at 150, its end at -180. `roll`, in turns: its clip goes round with it, over the side we see and under)
   c.save(); c.translate(x, y); c.rotate(angle); c.globalAlpha *= alpha; c.lineCap = 'round';
   const body = new Path2D(); body.roundRect(-180, -12, 292, 24, 11);
   const g = c.createLinearGradient(0, -12, 0, 12);
@@ -173,7 +177,7 @@ function drawPenBig(c: Ctx, x: number, y: number, angle: number, alpha = 1) {
   c.fillStyle = rgba('ink'); c.beginPath(); c.moveTo(141, -3.5); c.lineTo(151, 0); c.lineTo(141, 3.5); c.closePath(); c.fill();                                    // the point
   c.fillStyle = mix(PEN, 'ink', 0.25); c.fillRect(64, -12, 44, 24);                                                                                               // the grip
   c.fillStyle = mix('frost', 'paper', 0.3); c.fillRect(-150, -12, 7, 24);                                                                                         // a ring near the end
-  c.strokeStyle = mix('frost', 'paper', 0.3); c.lineWidth = 5; c.beginPath(); c.moveTo(-172, -13); c.lineTo(-92, -13); c.stroke();                                // the clip
+  if (Math.sin(roll * TAU) > -0.2) { const y = -13 * Math.cos(roll * TAU); c.strokeStyle = mix('frost', 'paper', 0.3); c.lineWidth = 5; c.beginPath(); c.moveTo(-172, y); c.lineTo(-92, y); c.stroke(); }   // the clip
   c.strokeStyle = rgba('paper', 0.4); c.lineWidth = 2.5; c.beginPath(); c.moveTo(-136, -6.5); c.lineTo(58, -6.5); c.stroke();                                     // the light along it
   c.restore();
 }
@@ -293,11 +297,22 @@ export interface DeskOpts {
   doodle?: number;
   /** Her hand and the pen (default true). */
   hand?: boolean;
+  /** Her pen, lying on the page by itself (the outro): its middle (px of the picture), the way it points (rad), and how far it has rolled (turns). */
+  pen?: { x: number; y: number; a: number; roll: number };
+  /** Paints what else is written on the page (the outro's title), in the notebook's own space: see PAGE. */
+  written?: (c: Ctx) => void;
 }
 /** The desk from above: paints the picture and far beyond its edges, so that a camera can pull back from it. */
 export function drawDeskTop(c: Ctx, o: DeskOpts) {
   desk(c);
-  notebook(c, o.doodle ?? DOODLE_UNFINISHED);
+  notebook(c, o.doodle ?? DOODLE_UNFINISHED, o.written);
+  if (o.pen) {
+    // (its shadow on the page, then the pen)
+    c.save(); c.translate(o.pen.x - 9, o.pen.y + 13); c.filter = 'blur(5px)'; c.globalAlpha = 0.22;
+    c.rotate(o.pen.a); c.fillStyle = rgba('ink'); c.beginPath(); c.roundRect(-180, -11, 330, 22, 11); c.fill();
+    c.restore();
+    drawPenBig(c, o.pen.x, o.pen.y, o.pen.a, 1, o.pen.roll);
+  }
   if (o.hand !== false) hand(c, o.t, o.beat);
   blinds(c, o.t, 'shade');
 }
